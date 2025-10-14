@@ -166,13 +166,38 @@ export class SafariOptimizedQRScanner {
     // Safari最適化: より確実なビデオ準備待機
     async waitForVideoReady() {
         return new Promise((resolve, reject) => {
+            let checkCount = 0;
+            const maxChecks = 150; // 最大15秒（100ms × 150回）
+            
             const timeout = setTimeout(() => {
-                console.error('Video initialization timeout - current readyState:', this.video.readyState);
-                reject(new Error('ビデオ初期化タイムアウト'));
-            }, 20000); // 20秒に延長（iPhone Safari対応）
+                console.error('Video initialization timeout after 30 seconds', {
+                    readyState: this.video.readyState,
+                    videoWidth: this.video.videoWidth,
+                    videoHeight: this.video.videoHeight,
+                    streamActive: this.stream?.active,
+                    checks: checkCount
+                });
+                
+                // タイムアウトでも readyState >= 2 なら続行を試みる
+                if (this.video.readyState >= 2) {
+                    console.warn('Timeout but video readyState acceptable, continuing...');
+                    resolve();
+                } else {
+                    reject(new Error('ビデオ初期化タイムアウト: カメラの準備ができませんでした'));
+                }
+            }, 30000); // 30秒に延長
 
             const checkReady = () => {
-                console.log('Video readyState:', this.video.readyState, 'videoWidth:', this.video.videoWidth, 'videoHeight:', this.video.videoHeight);
+                checkCount++;
+                
+                // ストリームの状態確認
+                if (!this.stream || !this.stream.active) {
+                    clearTimeout(timeout);
+                    reject(new Error('カメラストリームが無効です'));
+                    return;
+                }
+                
+                console.log(`Video check ${checkCount}: readyState=${this.video.readyState}, size=${this.video.videoWidth}x${this.video.videoHeight}`);
                 
                 // iPhone Safariでは readyState が 2 (HAVE_CURRENT_DATA) でも動作することがある
                 if (this.video.readyState >= 2) {
@@ -186,9 +211,13 @@ export class SafariOptimizedQRScanner {
                                 console.log('Video playback started successfully');
                                 // 追加の待機時間（Safari最適化）
                                 setTimeout(() => {
-                                    console.log('Video ready - final readyState:', this.video.readyState);
+                                    console.log('Video ready - final state:', {
+                                        readyState: this.video.readyState,
+                                        size: `${this.video.videoWidth}x${this.video.videoHeight}`,
+                                        paused: this.video.paused
+                                    });
                                     resolve();
-                                }, 1500); // 1.5秒に延長
+                                }, 1500); // 1.5秒待機
                             })
                             .catch((error) => {
                                 console.error('Video play failed:', error);
@@ -197,20 +226,33 @@ export class SafariOptimizedQRScanner {
                                     console.warn('Play failed but readyState is acceptable, continuing...');
                                     setTimeout(resolve, 1000);
                                 } else {
+                                    clearTimeout(timeout);
                                     reject(error);
                                 }
                             });
+                    } else if (checkCount >= maxChecks) {
+                        clearTimeout(timeout);
+                        reject(new Error('ビデオの寸法を取得できません'));
                     } else {
-                        setTimeout(checkReady, 150);
+                        setTimeout(checkReady, 100);
                     }
+                } else if (checkCount >= maxChecks) {
+                    clearTimeout(timeout);
+                    reject(new Error(`ビデオが準備できません (readyState: ${this.video.readyState})`));
                 } else {
-                    setTimeout(checkReady, 150);
+                    setTimeout(checkReady, 100);
                 }
             };
 
             this.video.onloadedmetadata = () => {
-                console.log('Video metadata loaded');
+                console.log('Video metadata loaded event fired');
                 checkReady();
+            };
+            
+            this.video.onerror = (error) => {
+                console.error('Video element error:', error);
+                clearTimeout(timeout);
+                reject(new Error('ビデオ要素でエラーが発生しました'));
             };
             
             // 即座にチェック開始
@@ -220,26 +262,56 @@ export class SafariOptimizedQRScanner {
 
     // キャリブレーション機能（Safari最適化の核心）
     async calibrateCamera() {
-        if (this.isCalibrating || this.calibrationAttempts >= this.maxCalibrationAttempts) {
-            return this.startQRDetection();
-        }
+        try {
+            if (this.isCalibrating || this.calibrationAttempts >= this.maxCalibrationAttempts) {
+                return this.startQRDetection();
+            }
 
-        this.isCalibrating = true;
-        this.calibrationAttempts++;
-        
-        this.onStatusUpdate(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
+            this.isCalibrating = true;
+            this.calibrationAttempts++;
+            
+            this.onStatusUpdate(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
 
-        // キャリブレーション期間（Safari最適化）
-        await new Promise(resolve => setTimeout(resolve, 2000));
+            // カメラストリームの状態確認
+            if (!this.stream || !this.stream.active) {
+                throw new Error('カメラストリームが無効です');
+            }
 
-        this.isCalibrating = false;
+            // ビデオ要素の状態確認
+            if (!this.video || !this.video.srcObject) {
+                throw new Error('ビデオ要素が初期化されていません');
+            }
 
-        // カメラが完全に準備できているかチェック
-        if (this.video.readyState === 4 && this.video.videoWidth > 0) {
-            this.startQRDetection();
-        } else {
-            // 再キャリブレーション
-            setTimeout(() => this.calibrateCamera(), 1000);
+            // キャリブレーション期間（Safari最適化）
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            this.isCalibrating = false;
+
+            // カメラが完全に準備できているかチェック
+            if (this.video.readyState >= 2 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+                console.log('Calibration successful. Video dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
+                this.startQRDetection();
+            } else if (this.calibrationAttempts < this.maxCalibrationAttempts) {
+                // 再キャリブレーション
+                console.warn('Calibration incomplete, retrying...', {
+                    readyState: this.video.readyState,
+                    videoWidth: this.video.videoWidth,
+                    videoHeight: this.video.videoHeight
+                });
+                setTimeout(() => this.calibrateCamera(), 1000);
+            } else {
+                // 最大試行回数に達した場合でも、readyState >= 2 なら続行を試みる
+                if (this.video.readyState >= 2) {
+                    console.warn('Max calibration attempts reached but readyState acceptable, proceeding...');
+                    this.startQRDetection();
+                } else {
+                    throw new Error('カメラのキャリブレーションに失敗しました');
+                }
+            }
+        } catch (error) {
+            console.error('Calibration error:', error);
+            this.isCalibrating = false;
+            this.handleError('カメラのキャリブレーションエラー', error);
         }
     }
 
@@ -412,30 +484,49 @@ export class SafariOptimizedQRScanner {
         }
     }
 
-    handleError(error) {
+    handleError(messageOrError, error) {
         this.stopScan();
         
         let message = 'カメラにアクセスできませんでした。';
+        let actualError = error;
         
-        switch (error.name) {
-            case 'NotAllowedError':
-                message = 'カメラの使用が拒否されました。ブラウザの設定からカメラの許可を有効にしてください。';
-                break;
-            case 'NotFoundError':
-                message = 'カメラが見つかりませんでした。デバイスにカメラが接続されているか確認してください。';
-                break;
-            case 'NotSupportedError':
-                message = 'このブラウザではカメラ機能がサポートされていません。最新のSafari、Chrome、またはEdgeをお試しください。';
-                break;
-            case 'NotReadableError':
-                message = 'カメラが他のアプリケーションで使用中です。他のアプリを閉じてから再試行してください。';
-                break;
-            case 'SecurityError':
-                message = 'セキュリティ制限によりカメラにアクセスできません。HTTPS環境が必要です。';
-                break;
+        // 引数が1つの場合（Errorオブジェクトのみ）
+        if (messageOrError instanceof Error && !error) {
+            actualError = messageOrError;
+        } else if (typeof messageOrError === 'string') {
+            message = messageOrError;
+        }
+        
+        // エラータイプに応じたメッセージ
+        if (actualError) {
+            console.error('QR Scanner Error:', actualError);
+            
+            switch (actualError.name) {
+                case 'NotAllowedError':
+                    message = 'カメラの使用が拒否されました。ブラウザの設定からカメラの許可を有効にしてください。';
+                    break;
+                case 'NotFoundError':
+                    message = 'カメラが見つかりませんでした。デバイスにカメラが接続されているか確認してください。';
+                    break;
+                case 'NotSupportedError':
+                    message = 'このブラウザではカメラ機能がサポートされていません。最新のSafari、Chrome、またはEdgeをお試しください。';
+                    break;
+                case 'NotReadableError':
+                    message = 'カメラが他のアプリケーションで使用中です。他のアプリを閉じてから再試行してください。';
+                    break;
+                case 'SecurityError':
+                    message = 'セキュリティ制限によりカメラにアクセスできません。HTTPS環境が必要です。';
+                    break;
+                default:
+                    // カスタムエラーメッセージがある場合
+                    if (actualError.message && !message.includes(actualError.message)) {
+                        message = `${message}\n詳細: ${actualError.message}`;
+                    }
+            }
         }
 
-        this.onError(message, error);
+        console.error('Final error message:', message);
+        this.onError(message, actualError);
     }
 
     // 手動キャリブレーション
