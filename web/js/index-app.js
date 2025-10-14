@@ -867,9 +867,26 @@ function updateQRStatusMessage(message) {
     }
 }
 
-function handleQRScannerError(message) {
-    showToast(message, 'danger');
-    updateQRStatusMessage(message);
+function handleQRScannerError(message, error) {
+    // HTML形式のメッセージを検出
+    const isHTML = message.includes('<div') || message.includes('<strong>');
+    
+    if (isHTML) {
+        // HTML形式のエラーメッセージを表示
+        const container = document.getElementById('qr-result');
+        if (container) {
+            container.innerHTML = message;
+            container.style.display = 'block';
+            container.className = 'alert alert-danger';
+        }
+        // ステータスにはテキストのみ表示
+        const textOnly = message.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().substring(0, 50);
+        updateQRStatusMessage(textOnly);
+    } else {
+        // 従来のテキストメッセージ
+        showToast(message, 'danger', 8000); // HTML形式の場合は長めに表示
+        updateQRStatusMessage(message);
+    }
 }
 
 function toggleQRControls({ scanning }) {
@@ -1053,13 +1070,14 @@ function showToast(message, type = 'info', duration = 4000) {
     toastEl.ariaLive = 'assertive';
     toastEl.ariaAtomic = 'true';
     
-    // 改行をサポート
-    const formattedMessage = message.replace(/\n/g, '<br>');
+    // 改行をサポート & HTML形式メッセージの検出
+    const isHTML = message.includes('<div') || message.includes('<strong>');
+    const formattedMessage = isHTML ? message : message.replace(/\n/g, '<br>');
     
     toastEl.innerHTML = `
         <div class="d-flex">
-            <div class="toast-body" style="white-space: pre-wrap;">${formattedMessage}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            <div class="toast-body" style="white-space: ${isHTML ? 'normal' : 'pre-wrap'};">${formattedMessage}</div>
+            <button type="button" class="btn-close ${isHTML ? 'btn-close' : 'btn-close-white'} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
     `;
 

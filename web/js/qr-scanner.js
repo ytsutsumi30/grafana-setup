@@ -260,19 +260,26 @@ export class SafariOptimizedQRScanner {
             throw new Error('カメラストリームの取得に失敗しました');
         }
 
-        // iPad/iPhone Safari向けの特別な属性設定
-        this.video.setAttribute('playsinline', '');
-        this.video.setAttribute('webkit-playsinline', '');
-        this.video.setAttribute('autoplay', '');
+        // Safari最適化: ストリームを先に割り当て
+        this.video.srcObject = this.stream;
+        this.updateDebug('stream', 'Connected');
+
+        // iPad/iPhone Safari向けの特別な属性設定（safari.html実装）
+        this.video.setAttribute('playsinline', true);
+        this.video.setAttribute('webkit-playsinline', true);
+        this.video.setAttribute('autoplay', true);
         this.video.muted = true;
         this.video.playsInline = true;
         
-        // ストリームを割り当て
-        this.video.srcObject = this.stream;
-        this.updateDebug('stream', 'Connected');
+        // iOS向けの追加最適化（safari.html実装）
+        this.video.style.objectFit = 'cover';
+        if (this.deviceInfo.isIOS) {
+            this.video.style.transform = 'scaleX(-1)'; // ミラー表示でユーザビリティ向上
+        }
+        
         this.updateDebug('ready', this.video.readyState);
 
-        // ビデオ準備待機
+        // Safari最適化: より確実なビデオ準備待機（safari.html実装）
         await this.waitForVideoReady();
         
         this.isScanning = true;
@@ -283,11 +290,11 @@ export class SafariOptimizedQRScanner {
         await this.calibrateCamera();
     }
 
-    // Safari最適化: より確実なビデオ準備待機
+    // Safari最適化: より確実なビデオ準備待機（safari.html実装）
     async waitForVideoReady() {
         return new Promise((resolve, reject) => {
             let checkCount = 0;
-            const maxChecks = 150;
+            const maxChecks = 200; // iPhone向けに増加（safari.html実装）
             
             const timeout = setTimeout(() => {
                 this.log('Video initialization timeout', {
@@ -305,10 +312,11 @@ export class SafariOptimizedQRScanner {
                 } else {
                     reject(new Error('ビデオ初期化タイムアウト'));
                 }
-            }, 30000);
+            }, 30000); // 30秒に延長（safari.html実装）
 
             const checkReady = () => {
                 checkCount++;
+                this.updateDebug('ready', `${this.video.readyState} (${checkCount})`);
                 
                 // ストリーム状態確認
                 if (!this.stream || !this.stream.active) {
@@ -317,10 +325,12 @@ export class SafariOptimizedQRScanner {
                     return;
                 }
                 
-                if (this.debugMode && checkCount % 10 === 0) {
+                if (checkCount % 20 === 0) {
                     this.log(`Video check ${checkCount}:`, {
                         readyState: this.video.readyState,
-                        size: `${this.video.videoWidth}x${this.video.videoHeight}`
+                        size: `${this.video.videoWidth}x${this.video.videoHeight}`,
+                        currentTime: this.video.currentTime,
+                        paused: this.video.paused
                     });
                 }
                 
@@ -331,41 +341,56 @@ export class SafariOptimizedQRScanner {
                     
                     clearTimeout(timeout);
                     
-                    // 再生開始
-                    this.video.play()
-                        .then(() => {
+                    // Safari最適化: 再生開始を確実に実行（safari.html実装）
+                    const startPlayback = async () => {
+                        try {
+                            await this.video.play();
                             this.log('Video playback started', {
                                 size: `${this.video.videoWidth}x${this.video.videoHeight}`,
-                                readyState: this.video.readyState
+                                readyState: this.video.readyState,
+                                currentTime: this.video.currentTime
                             });
                             
-                            // iPad/iPhone向けの追加待機
-                            const waitTime = this.deviceInfo.isIOS ? 1500 : 1000;
+                            // iPhone/iPad向けの追加待機時間（safari.html実装）
+                            const waitTime = this.deviceInfo.isIOS ? 2000 : 1000;
                             setTimeout(resolve, waitTime);
-                        })
-                        .catch((error) => {
-                            this.log('Video play failed:', error);
+                        } catch (playError) {
+                            this.log('Video play failed, but continuing:', playError);
                             
-                            // autoplayが効いている場合は続行
-                            if (this.video.readyState >= 2) {
-                                this.log('Play failed but continuing...');
-                                setTimeout(resolve, 1000);
+                            // autoplayが効いている場合や、すでに再生中の場合は続行（safari.html実装）
+                            if (this.video.readyState >= 2 && !this.video.paused) {
+                                this.log('Video playing without explicit play()');
+                                setTimeout(resolve, 1500);
                             } else {
-                                clearTimeout(timeout);
-                                reject(error);
+                                // 再生に失敗したが、準備はできているので続行（safari.html実装）
+                                this.log('Play failed but readyState OK, continuing...');
+                                setTimeout(resolve, 1000);
                             }
-                        });
+                        }
+                    };
+                    
+                    startPlayback();
+                    
                 } else if (checkCount >= maxChecks) {
                     clearTimeout(timeout);
-                    reject(new Error('ビデオが準備できません'));
+                    reject(new Error(`ビデオが準備できません (checks: ${checkCount})`));
                 } else {
                     setTimeout(checkReady, 100);
                 }
             };
 
+            // イベントリスナー設定（safari.html実装）
             this.video.onloadedmetadata = () => {
                 this.log('Video metadata loaded');
-                checkReady();
+                setTimeout(checkReady, 100); // 少し待ってからチェック
+            };
+            
+            this.video.oncanplay = () => {
+                this.log('Video can start playing');
+            };
+            
+            this.video.oncanplaythrough = () => {
+                this.log('Video can play through');
             };
             
             this.video.onerror = (error) => {
@@ -374,7 +399,8 @@ export class SafariOptimizedQRScanner {
                 reject(new Error('ビデオ要素エラー'));
             };
             
-            setTimeout(checkReady, 100);
+            // 初回チェック開始（safari.html実装）
+            setTimeout(checkReady, 200);
         });
     }
 
