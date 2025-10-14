@@ -1,6 +1,6 @@
 /**
- * Safari最適化QRスキャナー
- * safari_qr_with_url_redirect.htmlのコア機能を移植
+ * Safari最適化QRスキャナー v2.0
+ * iPad/iPhone Safari 18.6+ 対応版
  */
 
 export class SafariOptimizedQRScanner {
@@ -24,6 +24,9 @@ export class SafariOptimizedQRScanner {
         this.maxHistorySize = options.maxHistorySize || 10;
         this.duplicateThreshold = options.duplicateThreshold || 2000; // 2秒
         
+        // iPad/iPhone最適化: デバイス情報
+        this.deviceInfo = this.detectDevice();
+        
         // コールバック関数
         this.onResult = options.onResult || (() => {});
         this.onError = options.onError || (() => {});
@@ -34,16 +37,47 @@ export class SafariOptimizedQRScanner {
         this.detectCameras();
     }
 
+    // デバイス検出（iPad/iPhone判定強化）
+    detectDevice() {
+        const ua = navigator.userAgent;
+        const isIOS = /iPad|iPhone|iPod/.test(ua);
+        const isIPad = /iPad/.test(ua);
+        const isIPhone = /iPhone/.test(ua);
+        
+        // iOS バージョン検出
+        let iosVersion = null;
+        const match = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
+        if (match) {
+            iosVersion = {
+                major: parseInt(match[1]),
+                minor: parseInt(match[2]),
+                patch: match[3] ? parseInt(match[3]) : 0
+            };
+        }
+        
+        return {
+            isIOS,
+            isIPad,
+            isIPhone,
+            iosVersion,
+            userAgent: ua,
+            supportsImageCapture: 'ImageCapture' in window,
+            supportsBarcodeDetector: 'BarcodeDetector' in window
+        };
+    }
+
     // ページライフサイクルイベントの処理（Safari最適化）
     initPageLifecycleHandling() {
         // Page Visibility API
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (this.isScanning) {
+                    this.log('Page hidden - pausing scan');
                     this.pauseScanning();
                 }
             } else {
                 if (this.isScanning) {
+                    this.log('Page visible - resuming scan');
                     setTimeout(() => this.resumeScanning(), 500);
                 }
             }
@@ -51,29 +85,49 @@ export class SafariOptimizedQRScanner {
 
         // Safari用のbeforeunload対策
         window.addEventListener('beforeunload', () => {
+            this.log('Page unloading - cleaning up');
             this.cleanupResources();
         });
 
         // Safari用のpagehide/pageshowイベント
         window.addEventListener('pagehide', () => {
+            this.log('Page hiding - cleaning up');
             this.cleanupResources();
         });
 
         window.addEventListener('pageshow', (event) => {
             if (event.persisted) {
-                // ページがキャッシュから復元された場合
-                console.log('Page restored from cache - QR Scanner ready');
+                this.log('Page restored from BFCache');
             }
         });
     }
 
+    // ログ出力（デバッグモード対応）
+    log(...args) {
+        if (this.debugMode) {
+            console.log('[QRScanner]', ...args);
+        }
+    }
+
     async detectCameras() {
         try {
+            // iOS Safari: カメラ許可後にラベルが取得可能
             const devices = await navigator.mediaDevices.enumerateDevices();
             this.cameras = devices.filter(device => device.kind === 'videoinput');
-            console.log(`${this.cameras.length} cameras detected`);
+            
+            this.log(`Detected ${this.cameras.length} cameras`, this.cameras);
+            
+            // デバイス情報をログ
+            if (this.debugMode) {
+                this.cameras.forEach((cam, idx) => {
+                    this.log(`Camera ${idx + 1}:`, {
+                        label: cam.label || '(未許可)',
+                        deviceId: cam.deviceId ? cam.deviceId.substring(0, 8) + '...' : 'N/A'
+                    });
+                });
+            }
         } catch (error) {
-            console.warn('カメラ検出エラー:', error);
+            this.log('Camera detection error:', error);
         }
     }
 
@@ -83,6 +137,13 @@ export class SafariOptimizedQRScanner {
             this.video = videoElement;
             this.calibrationAttempts = 0;
             this.frameCount = 0;
+            
+            this.log('Starting scan...', {
+                device: this.deviceInfo.isIPad ? 'iPad' : 
+                        this.deviceInfo.isIPhone ? 'iPhone' : 'Other',
+                iosVersion: this.deviceInfo.iosVersion
+            });
+            
             this.onStatusUpdate('カメラにアクセス中...');
             
             await this.initializeCamera();
@@ -92,19 +153,41 @@ export class SafariOptimizedQRScanner {
         }
     }
 
+    // iPad/iPhone Safari最適化: カメラ制約の自動選択
+    getOptimalConstraints() {
+        const baseConstraints = {
+            video: {
+                facingMode: this.currentCamera,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30 }
+            }
+        };
+        
+        // iPad/iPhone 特有の最適化
+        if (this.deviceInfo.isIOS) {
+            // iOS 18以降は高解像度対応
+            if (this.deviceInfo.iosVersion && this.deviceInfo.iosVersion.major >= 18) {
+                baseConstraints.video.width = { ideal: 1920 };
+                baseConstraints.video.height = { ideal: 1080 };
+            }
+            
+            // iPadは大画面なので解像度を上げる
+            if (this.deviceInfo.isIPad) {
+                baseConstraints.video.aspectRatio = { ideal: 16/9 };
+            }
+        }
+        
+        return baseConstraints;
+    }
+
     async initializeCamera() {
-        // iPhone Safari向けに段階的な制約で試行
+        // iPad/iPhone Safari向けに最適化された制約リスト
         const constraintsList = [
-            // 最適な設定
-            {
-                video: {
-                    facingMode: { exact: this.currentCamera },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30 }
-                }
-            },
-            // フォールバック1: exactを外す
+            // レベル1: 最適設定（iOS 18+向け）
+            this.getOptimalConstraints(),
+            
+            // レベル2: 標準HD
             {
                 video: {
                     facingMode: this.currentCamera,
@@ -112,7 +195,8 @@ export class SafariOptimizedQRScanner {
                     height: { ideal: 720 }
                 }
             },
-            // フォールバック2: 解像度を下げる
+            
+            // レベル3: 標準SD
             {
                 video: {
                     facingMode: this.currentCamera,
@@ -120,28 +204,39 @@ export class SafariOptimizedQRScanner {
                     height: { ideal: 480 }
                 }
             },
-            // フォールバック3: 最小限の制約
+            
+            // レベル4: 最小制約
             {
-                video: {
-                    facingMode: this.currentCamera
-                }
+                video: { facingMode: this.currentCamera }
             },
-            // 最終フォールバック: 制約なし
-            {
-                video: true
-            }
+            
+            // レベル5: 完全フォールバック
+            { video: true }
         ];
 
         let lastError = null;
         for (let i = 0; i < constraintsList.length; i++) {
             try {
-                console.log(`Trying camera constraints (attempt ${i + 1}/${constraintsList.length})...`);
+                this.log(`Attempting constraints level ${i + 1}/${constraintsList.length}`);
+                
                 this.stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
-                console.log(`Camera stream acquired successfully with constraints ${i + 1}`);
+                
+                // ストリーム取得成功
+                const track = this.stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                
+                this.log(`Camera acquired successfully:`, {
+                    level: i + 1,
+                    resolution: `${settings.width}x${settings.height}`,
+                    fps: settings.frameRate,
+                    facingMode: settings.facingMode
+                });
+                
                 break;
             } catch (error) {
-                console.warn(`Camera constraints ${i + 1} failed:`, error);
+                this.log(`Constraints level ${i + 1} failed:`, error.name);
                 lastError = error;
+                
                 if (i === constraintsList.length - 1) {
                     throw lastError;
                 }
@@ -151,7 +246,8 @@ export class SafariOptimizedQRScanner {
         if (!this.stream) {
             throw new Error('カメラストリームの取得に失敗しました');
         }
-        // iPhone Safari向けの特別な属性設定（ストリーム割り当て前）
+
+        // iPad/iPhone Safari向けの特別な属性設定
         this.video.setAttribute('playsinline', '');
         this.video.setAttribute('webkit-playsinline', '');
         this.video.setAttribute('autoplay', '');
@@ -161,12 +257,12 @@ export class SafariOptimizedQRScanner {
         // ストリームを割り当て
         this.video.srcObject = this.stream;
 
-        // より確実な初期化待機
+        // ビデオ準備待機
         await this.waitForVideoReady();
         
         this.isScanning = true;
         
-        // Safari最適化: キャリブレーション実行
+        // キャリブレーション実行
         await this.calibrateCamera();
     }
 
@@ -174,10 +270,10 @@ export class SafariOptimizedQRScanner {
     async waitForVideoReady() {
         return new Promise((resolve, reject) => {
             let checkCount = 0;
-            const maxChecks = 150; // 最大15秒（100ms × 150回）
+            const maxChecks = 150;
             
             const timeout = setTimeout(() => {
-                console.error('Video initialization timeout after 30 seconds', {
+                this.log('Video initialization timeout', {
                     readyState: this.video.readyState,
                     videoWidth: this.video.videoWidth,
                     videoHeight: this.video.videoHeight,
@@ -185,84 +281,82 @@ export class SafariOptimizedQRScanner {
                     checks: checkCount
                 });
                 
-                // タイムアウトでも readyState >= 2 なら続行を試みる
+                // readyState >= 2 なら続行を試みる
                 if (this.video.readyState >= 2) {
-                    console.warn('Timeout but video readyState acceptable, continuing...');
+                    this.log('Timeout but video ready, continuing...');
                     resolve();
                 } else {
-                    reject(new Error('ビデオ初期化タイムアウト: カメラの準備ができませんでした'));
+                    reject(new Error('ビデオ初期化タイムアウト'));
                 }
-            }, 30000); // 30秒に延長
+            }, 30000);
 
             const checkReady = () => {
                 checkCount++;
                 
-                // ストリームの状態確認
+                // ストリーム状態確認
                 if (!this.stream || !this.stream.active) {
                     clearTimeout(timeout);
                     reject(new Error('カメラストリームが無効です'));
                     return;
                 }
                 
-                console.log(`Video check ${checkCount}: readyState=${this.video.readyState}, size=${this.video.videoWidth}x${this.video.videoHeight}`);
+                if (this.debugMode && checkCount % 10 === 0) {
+                    this.log(`Video check ${checkCount}:`, {
+                        readyState: this.video.readyState,
+                        size: `${this.video.videoWidth}x${this.video.videoHeight}`
+                    });
+                }
                 
-                // iPhone Safariでは readyState が 2 (HAVE_CURRENT_DATA) でも動作することがある
-                if (this.video.readyState >= 2) {
-                    // メタデータが読み込まれているか確認
-                    if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-                        clearTimeout(timeout);
-                        
-                        // 再生開始（明示的に呼び出し）
-                        this.video.play()
-                            .then(() => {
-                                console.log('Video playback started successfully');
-                                // 追加の待機時間（Safari最適化）
-                                setTimeout(() => {
-                                    console.log('Video ready - final state:', {
-                                        readyState: this.video.readyState,
-                                        size: `${this.video.videoWidth}x${this.video.videoHeight}`,
-                                        paused: this.video.paused
-                                    });
-                                    resolve();
-                                }, 1500); // 1.5秒待機
-                            })
-                            .catch((error) => {
-                                console.error('Video play failed:', error);
-                                // play失敗しても続行を試みる（autoplayが効いている場合）
-                                if (this.video.readyState >= 2) {
-                                    console.warn('Play failed but readyState is acceptable, continuing...');
-                                    setTimeout(resolve, 1000);
-                                } else {
-                                    clearTimeout(timeout);
-                                    reject(error);
-                                }
+                // メタデータ読み込み完了 & 映像データあり
+                if (this.video.readyState >= 2 && 
+                    this.video.videoWidth > 0 && 
+                    this.video.videoHeight > 0) {
+                    
+                    clearTimeout(timeout);
+                    
+                    // 再生開始
+                    this.video.play()
+                        .then(() => {
+                            this.log('Video playback started', {
+                                size: `${this.video.videoWidth}x${this.video.videoHeight}`,
+                                readyState: this.video.readyState
                             });
-                    } else if (checkCount >= maxChecks) {
-                        clearTimeout(timeout);
-                        reject(new Error('ビデオの寸法を取得できません'));
-                    } else {
-                        setTimeout(checkReady, 100);
-                    }
+                            
+                            // iPad/iPhone向けの追加待機
+                            const waitTime = this.deviceInfo.isIOS ? 1500 : 1000;
+                            setTimeout(resolve, waitTime);
+                        })
+                        .catch((error) => {
+                            this.log('Video play failed:', error);
+                            
+                            // autoplayが効いている場合は続行
+                            if (this.video.readyState >= 2) {
+                                this.log('Play failed but continuing...');
+                                setTimeout(resolve, 1000);
+                            } else {
+                                clearTimeout(timeout);
+                                reject(error);
+                            }
+                        });
                 } else if (checkCount >= maxChecks) {
                     clearTimeout(timeout);
-                    reject(new Error(`ビデオが準備できません (readyState: ${this.video.readyState})`));
+                    reject(new Error('ビデオが準備できません'));
                 } else {
                     setTimeout(checkReady, 100);
                 }
             };
 
             this.video.onloadedmetadata = () => {
-                console.log('Video metadata loaded event fired');
+                this.log('Video metadata loaded');
                 checkReady();
             };
             
             this.video.onerror = (error) => {
-                console.error('Video element error:', error);
+                this.log('Video element error:', error);
                 clearTimeout(timeout);
-                reject(new Error('ビデオ要素でエラーが発生しました'));
+                reject(new Error('ビデオ要素エラー'));
             };
             
-            // 即座にチェック開始
             setTimeout(checkReady, 100);
         });
     }
@@ -278,47 +372,50 @@ export class SafariOptimizedQRScanner {
             this.calibrationAttempts++;
             
             this.onStatusUpdate(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
+            this.log(`Calibration attempt ${this.calibrationAttempts}`);
 
             // カメラストリームの状態確認
             if (!this.stream || !this.stream.active) {
                 throw new Error('カメラストリームが無効です');
             }
 
-            // ビデオ要素の状態確認
             if (!this.video || !this.video.srcObject) {
                 throw new Error('ビデオ要素が初期化されていません');
             }
 
-            // キャリブレーション期間（Safari最適化）
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // iPad/iPhone向けのキャリブレーション期間
+            const calibrationTime = this.deviceInfo.isIOS ? 2500 : 2000;
+            await new Promise(resolve => setTimeout(resolve, calibrationTime));
 
             this.isCalibrating = false;
 
-            // カメラが完全に準備できているかチェック
-            if (this.video.readyState >= 2 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-                console.log('Calibration successful. Video dimensions:', this.video.videoWidth, 'x', this.video.videoHeight);
+            // カメラ準備完了確認
+            if (this.video.readyState >= 2 && 
+                this.video.videoWidth > 0 && 
+                this.video.videoHeight > 0) {
+                
+                this.log('Calibration successful', {
+                    size: `${this.video.videoWidth}x${this.video.videoHeight}`,
+                    readyState: this.video.readyState
+                });
+                
                 this.startQRDetection();
             } else if (this.calibrationAttempts < this.maxCalibrationAttempts) {
-                // 再キャリブレーション
-                console.warn('Calibration incomplete, retrying...', {
-                    readyState: this.video.readyState,
-                    videoWidth: this.video.videoWidth,
-                    videoHeight: this.video.videoHeight
-                });
+                this.log('Calibration incomplete, retrying...');
                 setTimeout(() => this.calibrateCamera(), 1000);
             } else {
-                // 最大試行回数に達した場合でも、readyState >= 2 なら続行を試みる
+                // 最大試行回数到達
                 if (this.video.readyState >= 2) {
-                    console.warn('Max calibration attempts reached but readyState acceptable, proceeding...');
+                    this.log('Max attempts but continuing...');
                     this.startQRDetection();
                 } else {
                     throw new Error('カメラのキャリブレーションに失敗しました');
                 }
             }
         } catch (error) {
-            console.error('Calibration error:', error);
+            this.log('Calibration error:', error);
             this.isCalibrating = false;
-            this.handleError('カメラのキャリブレーションエラー', error);
+            this.handleError('キャリブレーションエラー', error);
         }
     }
 
