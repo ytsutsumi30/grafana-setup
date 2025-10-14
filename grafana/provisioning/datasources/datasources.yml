@@ -1,0 +1,25 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: true
+
+  - name: PostgreSQL-Production
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: production_db
+    user: production_user
+    secureJsonData:
+      password: production_pass
+    isDefault: true
+    editable: true
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 100
+      maxIdleConns: 100
+      connMaxLifetime: 14400

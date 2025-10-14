@@ -1,0 +1,190 @@
+#!/bin/bash
+
+###############################################################################
+# iPhone HTTPS接続ガイド表示スクリプト
+# 自己署名証明書でのiPhoneアクセス方法を説明します
+###############################################################################
+
+SERVER_IP=$(hostname -I | awk '{print $1}')
+
+# 色付き出力
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+clear
+
+echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║                                                            ║${NC}"
+echo -e "${BLUE}║       📱 iPhoneからHTTPSでアクセスする方法                ║${NC}"
+echo -e "${BLUE}║                                                            ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}現在の状況:${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${YELLOW}⚠️${NC}  エラーメッセージ:"
+echo -e "       ${RED}「サーバとセキュリティ保護された接続を確立できなかった\"${NC}"
+echo -e "       ${RED}ため、ページをひらけません」${NC}"
+echo ""
+echo -e "  ${GREEN}✅${NC}  原因: 自己署名SSL証明書をiOSが信頼していない"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}解決方法（3つの選択肢）:${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${YELLOW}【推奨】方法1: HTTPでアクセスする（カメラAPIは動作しません）${NC}"
+echo -e "────────────────────────────────────────────────────────────"
+echo -e "  ${BLUE}アクセスURL:${NC}"
+echo -e "    ${GREEN}http://${SERVER_IP}${NC}"
+echo ""
+echo -e "  ${YELLOW}⚠️ 注意:${NC}"
+echo -e "    • QRスキャン機能は使用できません（カメラAPIはHTTPSが必須）"
+echo -e "    • 通常の検品機能は使用可能"
+echo -e "    • テストや確認作業に適しています"
+echo ""
+
+echo -e "${YELLOW}方法2: iPhoneに証明書をインストールする（完全対応）${NC}"
+echo -e "────────────────────────────────────────────────────────────"
+echo -e "  ${BLUE}手順:${NC}"
+echo ""
+echo -e "  ${CYAN}ステップ1:${NC} 証明書ファイルをiPhoneに送信"
+echo -e "    • 証明書の場所: ${GREEN}ssl/server.crt${NC}"
+echo -e "    • 送信方法（いずれか）:"
+echo -e "      - メールに添付してiPhoneに送信"
+echo -e "      - AirDropで送信"
+echo -e "      - クラウドストレージ経由で送信"
+echo ""
+echo -e "  ${CYAN}ステップ2:${NC} iPhoneで証明書をインストール"
+echo -e "    1. server.crt ファイルをタップ"
+echo -e "    2. ${GREEN}「プロファイルがダウンロードされました」${NC}と表示される"
+echo -e "    3. 設定アプリを開く"
+echo -e "    4. ${GREEN}「プロファイルがダウンロードされました」${NC}をタップ"
+echo -e "    5. 右上の${GREEN}「インストール」${NC}をタップ"
+echo -e "    6. パスコードを入力"
+echo -e "    7. ${GREEN}「インストール」${NC}を再度タップして確認"
+echo ""
+echo -e "  ${CYAN}ステップ3:${NC} 証明書を信頼する"
+echo -e "    1. 設定 → ${GREEN}一般${NC} → ${GREEN}情報${NC} → ${GREEN}証明書信頼設定${NC}"
+echo -e "    2. ${GREEN}「192.168.3.6」${NC}の証明書を見つける"
+echo -e "    3. スイッチを${GREEN}オン${NC}にする"
+echo -e "    4. ${GREEN}「続ける」${NC}をタップして確認"
+echo ""
+echo -e "  ${CYAN}ステップ4:${NC} アクセス"
+echo -e "    • Safariで ${GREEN}https://${SERVER_IP}${NC} を開く"
+echo -e "    • 警告なしでアクセスできるようになります"
+echo -e "    • QRスキャン機能も使用可能になります ✅"
+echo ""
+
+echo -e "${YELLOW}方法3: Safari実験的機能を有効化（簡易対応）${NC}"
+echo -e "────────────────────────────────────────────────────────────"
+echo -e "  ${RED}⚠️ この方法は iOS 16以降で動作しない場合があります${NC}"
+echo ""
+echo -e "  ${BLUE}手順:${NC}"
+echo -e "    1. iPhoneで${GREEN}設定${NC}アプリを開く"
+echo -e "    2. ${GREEN}Safari${NC} → ${GREEN}詳細${NC} → ${GREEN}実験的な機能${NC}"
+echo -e "    3. ${GREEN}「NSURLSession WebSocket」${NC}をオンにする（既にオンの場合は一度オフにして再度オン）"
+echo -e "    4. Safariを完全に閉じる（マルチタスク画面から上にスワイプ）"
+echo -e "    5. Safariで ${GREEN}https://${SERVER_IP}${NC} にアクセス"
+echo -e "    6. ${YELLOW}「この接続ではプライバシーが保護されません」${NC}と表示される"
+echo -e "    7. ${GREEN}「詳細を表示」${NC}をタップ"
+echo -e "    8. ${GREEN}「このWebサイトを閲覧」${NC}をタップ"
+echo ""
+echo -e "  ${YELLOW}⚠️ 注意:${NC}"
+echo -e "    • この方法は一時的な解決策です"
+echo -e "    • Safariを閉じると再度警告が表示される場合があります"
+echo -e "    • 方法2の証明書インストールを推奨します"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}各方法の比較:${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "┌──────────────┬──────────────┬──────────────┬──────────────┐"
+echo -e "│              │ 方法1 (HTTP) │  方法2 (証明 │  方法3 (実験 │"
+echo -e "│              │              │  書)         │  機能)       │"
+echo -e "├──────────────┼──────────────┼──────────────┼──────────────┤"
+echo -e "│ 設定の簡単さ │ ${GREEN}★★★★★${NC}    │ ${YELLOW}★★☆☆☆${NC}    │ ${YELLOW}★★★☆☆${NC}    │"
+echo -e "│ QRスキャン   │ ${RED}✗ 不可${NC}      │ ${GREEN}✓ 可能${NC}      │ ${YELLOW}△ 不安定${NC}    │"
+echo -e "│ 通常検品     │ ${GREEN}✓ 可能${NC}      │ ${GREEN}✓ 可能${NC}      │ ${GREEN}✓ 可能${NC}      │"
+echo -e "│ セキュリティ │ ${YELLOW}△ 低い${NC}      │ ${GREEN}◯ 高い${NC}      │ ${YELLOW}△ 低い${NC}      │"
+echo -e "│ 推奨度       │ ${YELLOW}テスト用${NC}    │ ${GREEN}本番推奨${NC}    │ ${RED}非推奨${NC}      │"
+echo -e "└──────────────┴──────────────┴──────────────┴──────────────┘"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}証明書ファイルの取得方法:${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${BLUE}証明書ファイル:${NC} ${GREEN}/home/tsutsumi/grafana-setup/ssl/server.crt${NC}"
+echo ""
+echo -e "  ${YELLOW}取得方法1:${NC} SCPでコピー（PCからアクセス可能な場合）"
+echo -e "    ${CYAN}scp tsutsumi@${SERVER_IP}:/home/tsutsumi/grafana-setup/ssl/server.crt ~/Desktop/${NC}"
+echo ""
+echo -e "  ${YELLOW}取得方法2:${NC} Webブラウザで直接ダウンロード（開発環境のみ）"
+echo -e "    1. 以下のコマンドで一時的にHTTP経由でダウンロード可能にする:"
+echo -e "       ${CYAN}cp ssl/server.crt web/server.crt${NC}"
+echo -e "    2. ブラウザで以下にアクセス:"
+echo -e "       ${CYAN}http://${SERVER_IP}/server.crt${NC}"
+echo -e "    3. ダウンロード後、iPhoneにメールやAirDropで送信"
+echo ""
+echo -e "  ${YELLOW}取得方法3:${NC} 証明書の内容をコピー（メール送信用）"
+echo -e "    ${CYAN}cat ssl/server.crt${NC}"
+echo -e "    （出力内容をコピーして.crtファイルとして保存）"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}トラブルシューティング:${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${YELLOW}Q1:${NC} 証明書をインストールしたのに「プロファイルがダウンロードされました」が表示されない"
+echo -e "    ${GREEN}A:${NC} 設定 → 一般 → VPNとデバイス管理 を確認してください"
+echo ""
+echo -e "  ${YELLOW}Q2:${NC} 「証明書信頼設定」が見つからない"
+echo -e "    ${GREEN}A:${NC} 設定 → 一般 → 情報 を下にスクロールして探してください"
+echo -e "         （証明書がインストールされていない場合は表示されません）"
+echo ""
+echo -e "  ${YELLOW}Q3:${NC} それでもHTTPSで接続できない"
+echo -e "    ${GREEN}A:${NC} まずHTTPでアクセスして通常機能を確認してください:"
+echo -e "         ${CYAN}http://${SERVER_IP}${NC}"
+echo ""
+echo -e "  ${YELLOW}Q4:${NC} カメラAPIが必要ない場合は？"
+echo -e "    ${GREEN}A:${NC} HTTPで十分です。QRスキャン以外の全機能が使用できます。"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}現在のサーバー情報:${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${BLUE}サーバーIP:${NC}        ${GREEN}${SERVER_IP}${NC}"
+echo -e "  ${BLUE}HTTPアクセス:${NC}      ${GREEN}http://${SERVER_IP}${NC}"
+echo -e "  ${BLUE}HTTPSアクセス:${NC}     ${GREEN}https://${SERVER_IP}${NC}"
+echo -e "  ${BLUE}診断ツール:${NC}        ${GREEN}http://${SERVER_IP}/camera-test.html${NC}"
+echo -e "  ${BLUE}証明書有効期限:${NC}    365日 (2026年10月12日まで)"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${YELLOW}💡 ヒント:${NC}"
+echo -e "  QRスキャン機能が必要ない場合は、${GREEN}HTTPで十分${NC}です。"
+echo -e "  HTTPアクセスなら設定不要で即座に使用できます。"
+echo ""
+
+# 証明書をWebからダウンロード可能にするか確認
+echo -e "${YELLOW}証明書をWebブラウザ経由でダウンロード可能にしますか？ (y/N):${NC} "
+read -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    cp ssl/server.crt web/server.crt
+    echo -e "${GREEN}✓${NC} 証明書をコピーしました: ${CYAN}http://${SERVER_IP}/server.crt${NC}"
+    echo -e "   ブラウザで上記URLにアクセスしてダウンロードしてください。"
+fi
+
+echo ""

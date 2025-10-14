@@ -1,0 +1,56 @@
+# rsync除外パターン
+# デプロイ時に除外するファイル・ディレクトリ
+
+# 依存関係
+node_modules/
+__pycache__/
+*.pyc
+
+# バージョン管理
+.git/
+.gitignore
+
+# Terraform（ローカルのみ）
+terraform/
+
+# テスト・開発用
+github-pages/
+test/
+tests/
+
+# ログファイル
+*.log
+combined.log
+error.log
+
+# 環境変数（セキュリティ）
+.env
+.env.local
+.env.*.local
+
+# SSL秘密鍵（セキュリティ）
+ssl/server.key
+ssl/*.key
+
+# OS固有
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ビルド成果物
+dist/
+build/
+*.tar.gz
+*.zip
+
+# 一時ファイル
+tmp/
+temp/
+*.tmp

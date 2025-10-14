@@ -1,0 +1,30 @@
+
+# SSL証明書（秘密鍵は管理しない）
+ssl/*.key
+ssl/*.pem
+*.key
+*.pem
+
+# 環境変数ファイル
+.env
+*.env.local
+
+# node_modules
+node_modules/
+api/node_modules/
+
+# ログファイル
+*.log
+combined.log
+error.log
+
+# Terraform状態ファイル
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+
+# IDE設定
+.vscode/
+.idea/
+

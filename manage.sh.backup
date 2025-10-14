@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Grafana環境の管理スクリプト
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+case "$1" in
+    "start")
+        echo "🚀 Grafana環境を起動しています..."
+        docker-compose up -d
+        echo "✅ 起動完了!"
+        echo "📊 Grafana: http://localhost:3000 (admin/admin123)"
+        echo "📈 Prometheus: http://localhost:9090"
+        ;;
+    "stop")
+        echo "🛑 Grafana環境を停止しています..."
+        docker-compose down
+        echo "✅ 停止完了!"
+        ;;
+    "restart")
+        echo "🔄 Grafana環境を再起動しています..."
+        docker-compose restart
+        echo "✅ 再起動完了!"
+        ;;
+    "logs")
+        echo "📋 ログを表示します (Ctrl+C で終了)..."
+        docker-compose logs -f
+        ;;
+    "status")
+        echo "📊 サービス状況:"
+        docker-compose ps
+        ;;
+    "clean")
+        echo "🧹 環境をクリーンアップしています..."
+        docker-compose down -v
+        docker system prune -f
+        echo "✅ クリーンアップ完了!"
+        ;;
+    *)
+        echo "使用方法: $0 {start|stop|restart|logs|status|clean}"
+        echo ""
+        echo "コマンド:"
+        echo "  start   - Grafana環境を起動"
+        echo "  stop    - Grafana環境を停止"
+        echo "  restart - Grafana環境を再起動"
+        echo "  logs    - ログを表示"
+        echo "  status  - サービス状況を表示"
+        echo "  clean   - 環境を完全にクリーンアップ"
+        exit 1
+        ;;
+esac

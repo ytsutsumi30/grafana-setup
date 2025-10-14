@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QRスキャンテスト - GitHub Pages</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+        .qr-video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #qr-video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .qr-scan-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 250px;
+            border: 3px dashed rgba(255, 255, 255, 0.6);
+            border-radius: 10px;
+            pointer-events: none;
+        }
+        .qr-scan-corner {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 4px solid #00ff00;
+        }
+        .qr-scan-corner.tl {
+            top: -2px;
+            left: -2px;
+            border-right: none;
+            border-bottom: none;
+        }
+        .qr-scan-corner.tr {
+            top: -2px;
+            right: -2px;
+            border-left: none;
+            border-bottom: none;
+        }
+        .qr-scan-corner.bl {
+            bottom: -2px;
+            left: -2px;
+            border-right: none;
+            border-top: none;
+        }
+        .qr-scan-corner.br {
+            bottom: -2px;
+            right: -2px;
+            border-left: none;
+            border-top: none;
+        }
+        .qr-scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff00, transparent);
+            animation: scan 2s linear infinite;
+            box-shadow: 0 0 10px #00ff00;
+        }
+        @keyframes scan {
+            0%, 100% { top: 0; }
+            50% { top: calc(100% - 2px); }
+        }
+        .qr-status-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .result-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+        .scan-result {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+        .scan-result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+        .scan-result.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+        }
+        .info-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            margin: 5px;
+        }
+        .badge-https {
+            background: #28a745;
+            color: white;
+        }
+        .badge-http {
+            background: #dc3545;
+            color: white;
+        }
+        .history-item {
+            padding: 10px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .history-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    <i class="fas fa-qrcode me-2"></i>
+                    QRスキャンテスト - GitHub Pages
+                </h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>GitHub Pagesテスト環境</strong><br>
+                    HTTPSが自動的に有効になるため、カメラAPIが使用できます。
+                </div>
+
+                <!-- 環境情報 -->
+                <div class="mb-3">
+                    <h5>環境情報</h5>
+                    <div>
+                        <span class="info-badge" id="protocol-badge">プロトコル: -</span>
+                        <span class="info-badge bg-secondary text-white" id="camera-badge">カメラAPI: 確認中...</span>
+                    </div>
+                    <small class="text-muted" id="user-agent"></small>
+                </div>
+
+                <!-- QRスキャンエリア -->
+                <div class="text-center mb-3">
+                    <div class="qr-video-container" id="qr-video-wrapper" style="display:none;">
+                        <video id="qr-video" playsinline webkit-playsinline muted autoplay></video>
+                        <div class="qr-scan-overlay">
+                            <div class="qr-scan-corner tl"></div>
+                            <div class="qr-scan-corner tr"></div>
+                            <div class="qr-scan-corner bl"></div>
+                            <div class="qr-scan-corner br"></div>
+                            <div class="qr-scan-line" id="qr-scan-line"></div>
+                        </div>
+                        <div class="qr-status-overlay" id="qr-status">準備中...</div>
+                    </div>
+                    
+                    <div id="qr-placeholder" class="p-5">
+                        <i class="fas fa-qrcode fa-5x text-muted mb-3"></i>
+                        <p class="text-muted">カメラを起動してQRコードをスキャンします</p>
+                    </div>
+                </div>
+
+                <!-- コントロールボタン -->
+                <div class="d-grid gap-2 mb-3">
+                    <button class="btn btn-success btn-lg" id="btn-start">
+                        <i class="fas fa-camera me-2"></i>カメラを起動
+                    </button>
+                    <button class="btn btn-danger btn-lg" id="btn-stop" style="display:none;">
+                        <i class="fas fa-stop me-2"></i>スキャンを停止
+                    </button>
+                </div>
+
+                <!-- スキャン結果 -->
+                <div id="result-container" style="display:none;">
+                    <h5><i class="fas fa-check-circle text-success me-2"></i>スキャン結果</h5>
+                    <div class="scan-result success" id="result-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- スキャン履歴 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-history me-2"></i>
+                    スキャン履歴 <span class="badge bg-primary" id="history-count">0</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="history-list">
+                    <p class="text-muted text-center">まだスキャンされていません</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 技術情報 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>技術情報
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>使用ライブラリ</h6>
+                <ul>
+                    <li><strong>QrScanner</strong> v1.4.2 - QRコード認識</li>
+                    <li><strong>Bootstrap</strong> v5.3.0 - UIフレームワーク</li>
+                </ul>
+                
+                <h6 class="mt-3">動作要件</h6>
+                <ul>
+                    <li>HTTPS環境（GitHub Pages対応済み）</li>
+                    <li>カメラ権限の許可</li>
+                    <li>iOS 11+ / Android 5+</li>
+                    <li>Safari / Chrome / Firefox</li>
+                </ul>
+
+                <h6 class="mt-3">リポジトリ</h6>
+                <p>このページのソースコードは以下で公開予定：</p>
+                <p class="text-muted">
+                    <i class="fab fa-github me-2"></i>
+                    <code>https://github.com/[username]/qr-scanner-test</code>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

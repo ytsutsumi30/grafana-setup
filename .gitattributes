@@ -1,0 +1,23 @@
+# すべてのテキストファイルをLFに統一
+* text=auto eol=lf
+
+# シェルスクリプトは必ずLF
+*.sh text eol=lf
+
+# バイナリファイル
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+
+# SSL証明書
+*.key binary
+*.pem binary
+*.crt binary
+*.p12 binary
+*.pfx binary

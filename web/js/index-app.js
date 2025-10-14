@@ -1,0 +1,1075 @@
+import SafariOptimizedQRScanner from './qr-scanner.js';
+
+const API_BASE_URL = '/api';
+const QR_WORKER_URL = 'https://unpkg.com/qr-scanner@1.4.2/qr-scanner-worker.min.js';
+
+let shipments = [];
+let shipmentIndex = new Map();
+let currentShipment = null;
+
+let inspectionModal = null;
+let detailModal = null;
+let qrModal = null;
+
+let qrContext = null;
+let qrInspectionRecord = null;
+let safariScanner = null;
+let qrVideoElement = null;
+let qrStatusBadge = null;
+let qrResultContainer = null;
+let qrProgressLabel = null;
+let qrPassedQuantity = null;
+let qrScanButton = null;
+let qrSimulateButton = null;
+
+const bootstrapAvailable = typeof bootstrap !== 'undefined';
+if (!bootstrapAvailable) {
+    console.warn('Bootstrap modal utilities are not available. Modals may not function correctly.');
+}
+
+if (typeof window !== 'undefined' && window.QrScanner) {
+    window.QrScanner.WORKER_PATH = QR_WORKER_URL;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initializeModals();
+    initializeEventListeners();
+    loadShipments();
+});
+
+function initializeModals() {
+    if (!bootstrapAvailable) {
+        return;
+    }
+
+    const inspectionModalElement = document.getElementById('inspectionModal');
+    const detailModalElement = document.getElementById('detailModal');
+    const qrModalElement = document.getElementById('qrInspectionModal');
+
+    if (inspectionModalElement) {
+        inspectionModal = new bootstrap.Modal(inspectionModalElement);
+        inspectionModalElement.addEventListener('hidden.bs.modal', () => {
+            currentShipment = null;
+            clearInspectionForm();
+        });
+    }
+
+    if (detailModalElement) {
+        detailModal = new bootstrap.Modal(detailModalElement);
+    }
+
+    if (qrModalElement) {
+        qrModal = new bootstrap.Modal(qrModalElement);
+        qrModalElement.addEventListener('hidden.bs.modal', () => {
+            stopQRScanner();
+            resetQRState();
+        });
+    }
+}
+
+function initializeEventListeners() {
+    const completeInspectionButton = document.getElementById('btn-complete-inspection');
+    const saveDraftButton = document.getElementById('btn-save-draft');
+    const printDetailsButton = document.getElementById('btn-print-details');
+    const startQRButton = document.getElementById('btn-start-qr-scan');
+    const completeQRButton = document.getElementById('btn-complete-qr-inspection');
+
+    if (completeInspectionButton) {
+        completeInspectionButton.addEventListener('click', () => submitInspection({ isDraft: false }));
+    }
+    if (saveDraftButton) {
+        saveDraftButton.addEventListener('click', () => submitInspection({ isDraft: true }));
+    }
+    if (printDetailsButton) {
+        printDetailsButton.addEventListener('click', () => window.print());
+    }
+    if (startQRButton) {
+        startQRButton.addEventListener('click', startQRScanner);
+    }
+    if (completeQRButton) {
+        completeQRButton.addEventListener('click', completeQRInspection);
+    }
+}
+
+async function loadShipments() {
+    const listContainer = document.getElementById('shipment-list');
+    const loadingIndicator = document.getElementById('shipment-loading');
+    const pendingCount = document.getElementById('pending-count');
+
+    try {
+        if (listContainer && !loadingIndicator) {
+            listContainer.innerHTML = '<div class="text-center text-muted py-5">データを取得しています...</div>';
+        }
+
+        const response = await fetch(`${API_BASE_URL}/shipping-instructions?status=pending`);
+        if (!response.ok) {
+            throw new Error(`出荷指示の取得に失敗しました (HTTP ${response.status})`);
+        }
+
+        const data = await response.json();
+        shipments = Array.isArray(data) ? data : [];
+        shipmentIndex = new Map(shipments.map(item => [item.instruction_id, item]));
+
+        if (pendingCount) {
+            pendingCount.textContent = `${shipments.length}件`;
+        }
+
+        renderShipmentCards(shipments);
+    } catch (error) {
+        console.error('loadShipments error:', error);
+        if (listContainer) {
+            listContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    <h5 class="alert-heading">データ読込エラー</h5>
+                    <p class="mb-2">出荷指示データの取得に失敗しました。</p>
+                    <small class="text-muted">${error.message}</small>
+                </div>
+            `;
+        }
+    }
+}
+
+function renderShipmentCards(items) {
+    const container = document.getElementById('shipment-list');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (!items.length) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-box-open fa-3x mb-3"></i>
+                <div>現在、検品待ちの出荷指示はありません。</div>
+            </div>
+        `;
+        return;
+    }
+
+    items.forEach(item => {
+        const card = createShipmentCard(item);
+        container.appendChild(card);
+    });
+}
+
+function createShipmentCard(item) {
+    const card = document.createElement('div');
+    card.className = 'inspection-card card';
+
+    const priorityClass = item.priority === 'high' ? 'priority-high'
+        : item.priority === 'low' ? 'priority-normal'
+        : 'priority-normal';
+    const priorityLabel = item.priority === 'high' ? '高優先度'
+        : item.priority === 'low' ? '低優先度'
+        : '通常優先度';
+
+    const shippingDate = formatDate(item.shipping_date);
+    const barcodeText = generateBarcodePlaceholder(item.product_code);
+
+    card.innerHTML = `
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">出荷指示: ${item.instruction_id}</h5>
+            <span class="status-badge ${priorityClass}">
+                <i class="fas fa-circle me-1"></i>${priorityLabel}
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>製品:</strong> ${item.product_name} (${item.product_code})</p>
+                    <p><strong>数量:</strong> <span class="quantity-display">${item.quantity.toLocaleString()}個</span></p>
+                    <p><strong>顧客:</strong> ${item.customer_name || '未設定'}</p>
+                    <p><strong>出荷日:</strong> ${shippingDate}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>製品バーコード:</strong></p>
+                    <div class="barcode-display">${barcodeText} ${item.product_code}</div>
+                    <p class="mt-2"><strong>配送先:</strong> ${item.delivery_location_name || '未設定'}</p>
+                    <p><strong>特記事項:</strong> ${item.notes || 'なし'}</p>
+                </div>
+            </div>
+            <div class="mt-3 d-flex flex-wrap gap-2">
+                <button class="btn btn-primary btn-sm flex-grow-1 flex-md-grow-0" data-role="start-inspection">
+                    <i class="fas fa-play me-1"></i>検品開始
+                </button>
+                <button class="btn btn-warning btn-sm flex-grow-1 flex-md-grow-0" data-role="start-qr">
+                    <i class="fas fa-qrcode me-1"></i>QR検品
+                </button>
+                <button class="btn btn-outline-secondary btn-sm flex-grow-1 flex-md-grow-0" data-role="view-details">
+                    <i class="fas fa-eye me-1"></i>詳細表示
+                </button>
+            </div>
+        </div>
+    `;
+
+    card.querySelector('[data-role="start-inspection"]').addEventListener('click', () => openInspection(item));
+    card.querySelector('[data-role="start-qr"]').addEventListener('click', () => openQRInspection(item));
+    card.querySelector('[data-role="view-details"]').addEventListener('click', () => openDetails(item));
+
+    return card;
+}
+
+function formatDate(value) {
+    if (!value) return '未設定';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function generateBarcodePlaceholder(code = '') {
+    const normalized = code.replace(/[^A-Z0-9]/gi, '').slice(0, 12);
+    return normalized
+        .split('')
+        .map((_, index) => (index % 2 === 0 ? '||||' : '|||'))
+        .join(' ');
+}
+
+async function openInspection(item) {
+    try {
+        const detail = await fetchShipmentDetail(item.id);
+        currentShipment = detail;
+        populateInspectionForm(detail);
+
+        if (inspectionModal) {
+            inspectionModal.show();
+        }
+    } catch (error) {
+        console.error('openInspection error:', error);
+        showToast('検品フォームの生成に失敗しました。', 'danger');
+    }
+}
+
+async function fetchShipmentDetail(id) {
+    const response = await fetch(`${API_BASE_URL}/shipping-instructions/${id}`);
+    if (!response.ok) {
+        throw new Error(`出荷指示詳細の取得に失敗しました (HTTP ${response.status})`);
+    }
+    return response.json();
+}
+
+function populateInspectionForm(detail) {
+    const content = document.getElementById('inspection-content');
+    if (!content) return;
+
+    const customer = detail.customer_name || '未設定';
+    const plannedQty = detail.quantity || 0;
+
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">出荷情報</h6>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>出荷指示:</strong> ${detail.instruction_id}</p>
+                        <p><strong>製品:</strong> ${detail.product_name} (${detail.product_code})</p>
+                        <p><strong>予定数量:</strong> ${plannedQty.toLocaleString()}個</p>
+                        <p><strong>顧客:</strong> ${customer}</p>
+                        <p><strong>配送先:</strong> ${detail.delivery_location_name || '未設定'}</p>
+                        <p><strong>希望配送日:</strong> ${formatDate(detail.shipping_date)}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">検品情報入力</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label" for="inspector">検品者名 *</label>
+                            <input type="text" class="form-control" id="inspector" required>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <label class="form-label" for="inspectedQty">検品数量 *</label>
+                                <input type="number" class="form-control" id="inspectedQty" value="${plannedQty}" min="0" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label" for="passedQty">合格数量 *</label>
+                                <input type="number" class="form-control" id="passedQty" value="${plannedQty}" min="0" required>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label" for="failedQty">不合格数量</label>
+                            <input type="number" class="form-control" id="failedQty" value="0" readonly>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">検品チェック項目</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="labelCheck">
+                                    <label class="form-check-label" for="labelCheck">ラベル確認完了</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="packagingCheck">
+                                    <label class="form-check-label" for="packagingCheck">梱包状態確認</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="documentCheck">
+                                    <label class="form-check-label" for="documentCheck">出荷書類確認</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="qualityCheck">
+                                    <label class="form-check-label" for="qualityCheck">品質基準適合</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="quantityCheck">
+                                    <label class="form-check-label" for="quantityCheck">数量一致確認</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="finalApproval">
+                                    <label class="form-check-label" for="finalApproval"><strong>最終承認</strong></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label" for="notes">不具合詳細・備考</label>
+                            <textarea class="form-control" id="notes" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    setupQuantityAutoCalculation();
+}
+
+function setupQuantityAutoCalculation() {
+    const inspectedInput = document.getElementById('inspectedQty');
+    const passedInput = document.getElementById('passedQty');
+    const failedInput = document.getElementById('failedQty');
+
+    if (!inspectedInput || !passedInput || !failedInput) return;
+
+    const updateFailed = () => {
+        const inspected = parseInt(inspectedInput.value, 10) || 0;
+        const passed = parseInt(passedInput.value, 10) || 0;
+        failedInput.value = Math.max(0, inspected - passed);
+    };
+
+    inspectedInput.addEventListener('input', updateFailed);
+    passedInput.addEventListener('input', updateFailed);
+}
+
+function clearInspectionForm() {
+    const content = document.getElementById('inspection-content');
+    if (content) {
+        content.innerHTML = '';
+    }
+}
+
+async function submitInspection({ isDraft }) {
+    if (!currentShipment) {
+        showToast('出荷指示情報が読み込まれていません。', 'warning');
+        return;
+    }
+
+    const inspectorInput = document.getElementById('inspector');
+    const inspectedInput = document.getElementById('inspectedQty');
+    const passedInput = document.getElementById('passedQty');
+    const failedInput = document.getElementById('failedQty');
+
+    if (!inspectorInput || !inspectedInput || !passedInput || !failedInput) {
+        showToast('検品フォームが正しく表示されていません。', 'danger');
+        return;
+    }
+
+    const inspector = inspectorInput.value.trim();
+    const inspectedQuantity = Number(inspectedInput.value);
+    const passedQuantity = Number(passedInput.value);
+    const failedQuantity = Number(failedInput.value);
+    const finalApprovalChecked = document.getElementById('finalApproval')?.checked ?? false;
+
+    if (!inspector) {
+        showToast('検品者名を入力してください。', 'warning');
+        inspectorInput.focus();
+        return;
+    }
+    if (Number.isNaN(inspectedQuantity) || inspectedQuantity < 0) {
+        showToast('検品数量が不正です。', 'warning');
+        inspectedInput.focus();
+        return;
+    }
+    if (Number.isNaN(passedQuantity) || passedQuantity < 0) {
+        showToast('合格数量が不正です。', 'warning');
+        passedInput.focus();
+        return;
+    }
+    if (passedQuantity > inspectedQuantity) {
+        showToast('合格数量は検品数量を超えることはできません。', 'warning');
+        passedInput.focus();
+        return;
+    }
+
+    if (!isDraft && !finalApprovalChecked) {
+        const proceed = window.confirm('最終承認が未チェックです。このまま完了しますか？');
+        if (!proceed) return;
+    }
+
+    const payload = {
+        shipping_instruction_id: currentShipment.id,
+        inspector_name: inspector,
+        inspected_quantity: inspectedQuantity,
+        passed_quantity: passedQuantity,
+        failed_quantity: failedQuantity,
+        defect_details: document.getElementById('notes')?.value || '',
+        packaging_condition: document.getElementById('packagingCheck')?.checked ? 'OK' : '要確認',
+        label_check: Boolean(document.getElementById('labelCheck')?.checked),
+        documentation_check: Boolean(document.getElementById('documentCheck')?.checked),
+        final_approval: !isDraft && finalApprovalChecked,
+        notes: isDraft ? 'ドラフト保存' : ''
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/shipping-inspections`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const message = await extractErrorMessage(response);
+            throw new Error(message);
+        }
+
+        showToast(isDraft ? '下書きとして保存しました。' : '検品が完了しました。', 'success');
+
+        if (inspectionModal) {
+            inspectionModal.hide();
+        }
+
+        await loadShipments();
+    } catch (error) {
+        console.error('submitInspection error:', error);
+        showToast(`検品結果の送信に失敗しました: ${error.message}`, 'danger');
+    }
+}
+
+async function openDetails(item) {
+    try {
+        const detail = await fetchShipmentDetail(item.id);
+        populateDetailModal(detail);
+        if (detailModal) {
+            detailModal.show();
+        }
+    } catch (error) {
+        console.error('openDetails error:', error);
+        showToast('詳細情報の取得に失敗しました。', 'danger');
+    }
+}
+
+function populateDetailModal(detail) {
+    const content = document.getElementById('detail-content');
+    if (!content) return;
+
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>基本情報</h6>
+                <table class="table table-sm">
+                    <tr><td>出荷指示番号:</td><td>${detail.instruction_id}</td></tr>
+                    <tr><td>作成日時:</td><td>${formatDate(detail.created_at)}</td></tr>
+                    <tr><td>ステータス:</td><td><span class="badge bg-warning">${detail.status}</span></td></tr>
+                    <tr><td>優先度:</td><td>${detail.priority}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>配送情報</h6>
+                <table class="table table-sm">
+                    <tr><td>配送方法:</td><td>${detail.delivery_method || '未設定'}</td></tr>
+                    <tr><td>配送業者:</td><td>${detail.delivery_contact || '未設定'}</td></tr>
+                    <tr><td>希望配達日:</td><td>${formatDate(detail.shipping_date)}</td></tr>
+                    <tr><td>納入場所:</td><td>${detail.delivery_location_name || '未設定'}</td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="mt-3">
+            <h6>生産履歴</h6>
+            <p class="text-muted">※ 実装例: 別途API連携により履歴を表示可能</p>
+        </div>
+    `;
+}
+
+async function openQRInspection(item) {
+    try {
+        const componentsResponse = await fetch(`${API_BASE_URL}/shipping-instructions/${item.id}/components`);
+        if (!componentsResponse.ok) {
+            const message = await extractErrorMessage(componentsResponse);
+            throw new Error(message);
+        }
+
+        const components = await componentsResponse.json();
+        if (!Array.isArray(components) || !components.length) {
+            throw new Error('同梱物が登録されていません。');
+        }
+
+        const first = components[0];
+        qrContext = {
+            shipment: item,
+            shippingInstructionId: item.id,
+            productId: first.product_id,
+            shippingInstructionCode: item.instruction_id,
+            quantity: item.quantity,
+            customer: item.customer_name || '未設定',
+            productName: `${first.product_name} (${first.product_code})`,
+            currentStock: first.current_stock ?? 0,
+            items: components.map(component => ({
+                id: component.id,
+                name: component.component_name,
+                type: component.component_type,
+                qrCode: component.qr_code,
+                status: 'pending'
+            }))
+        };
+
+        renderQRInspectionContent(qrContext);
+
+        if (qrModal) {
+            qrModal.show();
+        }
+    } catch (error) {
+        console.error('openQRInspection error:', error);
+        const container = document.getElementById('qr-inspection-content');
+        if (container) {
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <h5 class="alert-heading">QR検品の準備に失敗しました</h5>
+                    <p class="mb-2">${error.message}</p>
+                </div>
+            `;
+        }
+    }
+}
+
+function renderQRInspectionContent(context) {
+    const container = document.getElementById('qr-inspection-content');
+    if (!container) return;
+
+    const itemsHtml = context.items.map(item => `
+        <div class="card qr-item-card" id="qr-item-${item.id}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">
+                            <span class="qr-status-icon qr-pending" id="icon-${item.id}">
+                                <i class="fas fa-clock"></i>
+                            </span>
+                            ${item.name}
+                        </h6>
+                        <small class="text-muted">QRコード: ${item.qrCode}</small>
+                        <span class="badge bg-info ms-2 text-uppercase">${item.type}</span>
+                    </div>
+                    <div>
+                        <span class="badge bg-warning" id="status-${item.id}">未確認</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">出荷情報</h6>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>出荷指示:</strong> ${context.shippingInstructionCode}</p>
+                        <p><strong>製品:</strong> ${context.productName}</p>
+                        <p><strong>予定数量:</strong> ${context.quantity.toLocaleString()}個</p>
+                        <p><strong>顧客:</strong> ${context.customer}</p>
+                        <div class="mb-3">
+                            <label class="form-label" for="qr-inspector-name">検品者名 *</label>
+                            <input type="text" class="form-control" id="qr-inspector-name" placeholder="例) 田中太郎">
+                        </div>
+                    </div>
+                </div>
+                <div class="inventory-info">
+                    <h6 class="mb-2"><i class="fas fa-warehouse me-2"></i>在庫情報</h6>
+                    <p class="mb-1"><strong>現在庫:</strong> <span id="current-stock">${context.currentStock}</span>個</p>
+                    <p class="mb-0"><strong>検品後予定在庫:</strong> <span id="predicted-stock">${context.currentStock - context.quantity}</span>個</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="qr-scanner-area w-100" id="qr-scanner-area">
+                    <div class="qr-video-container" id="qr-video-wrapper" style="display:none;">
+                        <video id="qr-video" playsinline webkit-playsinline muted autoplay></video>
+                        <div class="qr-scan-overlay">
+                            <div class="qr-scan-corner tl"></div>
+                            <div class="qr-scan-corner tr"></div>
+                            <div class="qr-scan-corner bl"></div>
+                            <div class="qr-scan-corner br"></div>
+                            <div class="qr-scan-line" id="qr-scan-line" style="display:none;"></div>
+                        </div>
+                        <div class="qr-status-overlay" id="qr-status-overlay">準備中...</div>
+                    </div>
+                    <div class="text-center" id="qr-initial-message">
+                        <i class="fas fa-qrcode fa-3x text-muted mb-3"></i>
+                        <div class="text-muted mb-3" id="qr-status-text">QRコードスキャン待機中</div>
+                        <p class="text-sm text-muted mb-3">「QRスキャン開始」ボタンを押してください</p>
+                    </div>
+                    <div class="mt-2" id="qr-result" style="display:none;"></div>
+                    <button class="btn btn-outline-secondary btn-sm mt-3" id="btn-simulate-qr">
+                        <i class="fas fa-vial me-1"></i>テストスキャン
+                    </button>
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="fas fa-list-check me-2"></i>同梱物チェックリスト</h6>
+                        <span class="badge bg-secondary" id="qr-progress">0/${context.items.length}</span>
+                    </div>
+                    <div class="card-body">
+                        ${itemsHtml}
+                        <div class="mt-3 text-end">
+                            <strong>検品合格数:</strong> <span id="passed-quantity">0</span>個
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    qrVideoElement = document.getElementById('qr-video');
+    const qrVideoWrapper = document.getElementById('qr-video-wrapper');
+    const qrInitialMessage = document.getElementById('qr-initial-message');
+    qrStatusBadge = document.getElementById('qr-status-text');
+    const qrStatusOverlay = document.getElementById('qr-status-overlay');
+    const qrScanLine = document.getElementById('qr-scan-line');
+    qrResultContainer = document.getElementById('qr-result');
+    qrProgressLabel = document.getElementById('qr-progress');
+    qrPassedQuantity = document.getElementById('passed-quantity');
+    qrScanButton = document.getElementById('btn-start-qr-scan');
+    qrSimulateButton = document.getElementById('btn-simulate-qr');
+
+    if (qrSimulateButton) {
+        qrSimulateButton.addEventListener('click', simulateQRScan);
+    }
+
+    // カメラ起動時の表示制御用にグローバルに保存
+    window.qrUIElements = {
+        videoWrapper: qrVideoWrapper,
+        initialMessage: qrInitialMessage,
+        statusOverlay: qrStatusOverlay,
+        scanLine: qrScanLine
+    };
+}
+
+async function startQRScanner() {
+    if (!qrContext) {
+        showToast('QR検品情報が初期化されていません。', 'warning');
+        return;
+    }
+
+    const inspectorInput = document.getElementById('qr-inspector-name');
+    const inspectorName = inspectorInput?.value.trim();
+
+    if (!inspectorName) {
+        showToast('検品者名を入力してください。', 'warning');
+        inspectorInput?.focus();
+        return;
+    }
+
+    // カメラAPIの詳細診断
+    console.log('Camera API Check:', {
+        hasNavigator: !!navigator,
+        hasMediaDevices: !!navigator.mediaDevices,
+        hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+        protocol: window.location.protocol,
+        hostname: window.location.hostname,
+        userAgent: navigator.userAgent
+    });
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        let errorMsg = 'カメラAPIを利用できません。';
+        
+        // HTTPアクセスの場合の警告
+        if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            errorMsg = 'HTTPSまたはlocalhostでアクセスしてください。カメラAPIはセキュアな環境でのみ動作します。\n\n推奨アクセス方法:\n• https://' + window.location.hostname + '\n• http://localhost';
+            showToast(errorMsg, 'danger', 10000);
+        } else {
+            errorMsg = 'このブラウザまたは端末ではカメラAPIがサポートされていません。\n\n対処方法:\n• ブラウザを最新版に更新\n• Safari設定 → プライバシーとセキュリティ → カメラ を確認\n• iOSの場合、設定 → Safari → カメラ を許可に設定';
+            showToast(errorMsg, 'danger', 10000);
+        }
+        
+        console.error('Camera API not supported:', errorMsg);
+        return;
+    }
+
+    try {
+        toggleQRControls({ scanning: true });
+
+        if (!qrInspectionRecord) {
+            const response = await fetch(`${API_BASE_URL}/qr-inspections`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shipping_instruction_id: qrContext.shippingInstructionId,
+                    inspector_name: inspectorName
+                })
+            });
+
+            if (!response.ok) {
+                const message = await extractErrorMessage(response);
+                throw new Error(message);
+            }
+
+            qrInspectionRecord = await response.json();
+        }
+
+        if (!safariScanner) {
+            safariScanner = new SafariOptimizedQRScanner({
+                onResult: handleQRScanResult,
+                onError: handleQRScannerError,
+                onStatusUpdate: updateQRStatusMessage
+            });
+        }
+
+        if (qrVideoElement) {
+            // UIを切り替え：初期メッセージを非表示、ビデオコンテナを表示
+            if (window.qrUIElements) {
+                if (window.qrUIElements.initialMessage) {
+                    window.qrUIElements.initialMessage.style.display = 'none';
+                }
+                if (window.qrUIElements.videoWrapper) {
+                    window.qrUIElements.videoWrapper.style.display = 'block';
+                }
+                if (window.qrUIElements.statusOverlay) {
+                    window.qrUIElements.statusOverlay.textContent = 'カメラを起動しています...';
+                }
+            }
+
+            await safariScanner.startScan(qrVideoElement);
+            
+            // スキャンライン表示
+            if (window.qrUIElements && window.qrUIElements.scanLine) {
+                window.qrUIElements.scanLine.style.display = 'block';
+            }
+            if (window.qrUIElements && window.qrUIElements.statusOverlay) {
+                window.qrUIElements.statusOverlay.textContent = 'QRコードを枠内に収めてください';
+            }
+            
+            updateQRStatusMessage('カメラを起動しました。QRコードを枠内に収めてください。');
+            toggleQRControls({ scanning: true });
+        }
+    } catch (error) {
+        console.error('startQRScanner error:', error);
+        
+        // エラー時はビデオコンテナを非表示、初期メッセージを再表示
+        if (window.qrUIElements) {
+            if (window.qrUIElements.videoWrapper) {
+                window.qrUIElements.videoWrapper.style.display = 'none';
+            }
+            if (window.qrUIElements.initialMessage) {
+                window.qrUIElements.initialMessage.style.display = 'block';
+            }
+        }
+        
+        showToast(`QRスキャナーの起動に失敗しました: ${error.message}`, 'danger');
+        updateQRStatusMessage('スキャナー起動に失敗しました。');
+        toggleQRControls({ scanning: false });
+    }
+}
+
+function stopQRScanner() {
+    if (safariScanner) {
+        safariScanner.stopScan();
+    }
+    
+    // UIをリセット：ビデオコンテナを非表示、初期メッセージを表示
+    if (window.qrUIElements) {
+        if (window.qrUIElements.videoWrapper) {
+            window.qrUIElements.videoWrapper.style.display = 'none';
+        }
+        if (window.qrUIElements.initialMessage) {
+            window.qrUIElements.initialMessage.style.display = 'block';
+        }
+        if (window.qrUIElements.scanLine) {
+            window.qrUIElements.scanLine.style.display = 'none';
+        }
+    }
+    
+    toggleQRControls({ scanning: false });
+}
+
+function resetQRState() {
+    qrContext = null;
+    qrInspectionRecord = null;
+    qrVideoElement = null;
+    qrStatusBadge = null;
+    qrResultContainer = null;
+    qrProgressLabel = null;
+    qrPassedQuantity = null;
+    qrSimulateButton = null;
+}
+
+async function handleQRScanResult(qrCode) {
+    const success = await processQRScan(qrCode);
+
+    const hasPending = qrContext?.items?.some(item => item.status === 'pending');
+    if (success && hasPending && safariScanner && qrVideoElement) {
+        // 連続スキャンに備えて少し待機してから再開
+        updateQRStatusMessage('次のQRコードの準備中...');
+        setTimeout(async () => {
+            try {
+                if (qrContext && safariScanner && qrVideoElement) {
+                    console.log('Restarting scanner for next item...');
+                    // iPhone Safari向けに再初期化
+                    safariScanner.isScanning = true;
+                    await safariScanner.calibrateCamera();
+                    updateQRStatusMessage('次のQRコードをスキャンしてください。');
+                    
+                    // スキャンライン再表示
+                    if (window.qrUIElements && window.qrUIElements.scanLine) {
+                        window.qrUIElements.scanLine.style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('restart scanner error:', error);
+                updateQRStatusMessage('カメラの再開に失敗しました。「QRスキャン開始」ボタンを押してください。');
+                toggleQRControls({ scanning: false });
+            }
+        }, 1000); // 1秒待機（iPhone Safari向けに延長）
+    } else if (!hasPending) {
+        toggleQRControls({ scanning: false });
+        updateQRStatusMessage('すべての同梱物を確認しました。');
+        
+        // スキャンライン非表示
+        if (window.qrUIElements && window.qrUIElements.scanLine) {
+            window.qrUIElements.scanLine.style.display = 'none';
+        }
+    }
+}
+
+function updateQRStatusMessage(message) {
+    if (qrStatusBadge) {
+        qrStatusBadge.textContent = message;
+    }
+    // オーバーレイにも反映
+    if (window.qrUIElements && window.qrUIElements.statusOverlay) {
+        window.qrUIElements.statusOverlay.textContent = message;
+    }
+}
+
+function handleQRScannerError(message) {
+    showToast(message, 'danger');
+    updateQRStatusMessage(message);
+}
+
+function toggleQRControls({ scanning }) {
+    if (qrScanButton) {
+        qrScanButton.disabled = scanning;
+    }
+    if (qrSimulateButton) {
+        qrSimulateButton.disabled = !scanning && !qrInspectionRecord;
+    }
+}
+
+async function simulateQRScan() {
+    if (!qrContext) return;
+    const pendingItems = qrContext.items.filter(item => item.status === 'pending');
+    if (!pendingItems.length) {
+        showToast('全アイテムが確認済みです。', 'info');
+        return;
+    }
+
+    const randomItem = pendingItems[Math.floor(Math.random() * pendingItems.length)];
+    await processQRScan(randomItem.qrCode);
+}
+
+async function processQRScan(qrCode) {
+    if (!qrContext || !qrInspectionRecord) {
+        showToast('QR検品セッションが開始されていません。', 'warning');
+        return false;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/qr-inspections/${qrInspectionRecord.id}/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ qr_code: qrCode })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            showQRResult(`❌ ${result.message || 'スキャンに失敗しました'}`, 'danger');
+            return false;
+        }
+
+        const component = result.component;
+        const matched = qrContext.items.find(item => item.qrCode === qrCode);
+        if (matched) {
+            matched.status = 'scanned';
+            updateQRItemState(component.id, '確認済み');
+        }
+
+        const scannedCount = qrContext.items.filter(item => item.status === 'scanned').length;
+        updateQRProgress(scannedCount, qrContext.items.length);
+
+        if (qrPassedQuantity) {
+            if (scannedCount === qrContext.items.length) {
+                qrPassedQuantity.textContent = qrContext.quantity.toString();
+            } else {
+                qrPassedQuantity.textContent = scannedCount.toString();
+            }
+        }
+
+        showQRResult(`✅ ${component.component_name} (${qrCode}) を確認しました。`, 'success');
+        return true;
+    } catch (error) {
+        console.error('processQRScan error:', error);
+        showQRResult(`❌ スキャン処理でエラーが発生しました: ${error.message}`, 'danger');
+        return false;
+    }
+}
+
+function updateQRItemState(componentId, statusText) {
+    const card = document.getElementById(`qr-item-${componentId}`);
+    const icon = document.getElementById(`icon-${componentId}`);
+    const status = document.getElementById(`status-${componentId}`);
+
+    if (card) card.classList.add('scanned');
+    if (icon) {
+        icon.className = 'qr-status-icon qr-scanned';
+        icon.innerHTML = '<i class="fas fa-check-circle"></i>';
+    }
+    if (status) {
+        status.className = 'badge bg-success';
+        status.textContent = statusText;
+    }
+}
+
+function updateQRProgress(scanned, total) {
+    if (qrProgressLabel) {
+        qrProgressLabel.textContent = `${scanned}/${total}`;
+    }
+}
+
+function showQRResult(message, type = 'info') {
+    if (!qrResultContainer) return;
+    const className = type === 'success' ? 'alert alert-success'
+        : type === 'danger' ? 'alert alert-danger'
+        : 'alert alert-info';
+
+    qrResultContainer.style.display = 'block';
+    qrResultContainer.className = className;
+    qrResultContainer.textContent = message;
+}
+
+async function completeQRInspection() {
+    if (!qrContext || !qrInspectionRecord) {
+        showToast('QR検品が開始されていません。', 'warning');
+        return;
+    }
+
+    const totalItems = qrContext.items.length;
+    const scannedItems = qrContext.items.filter(item => item.status === 'scanned').length;
+
+    if (scannedItems < totalItems) {
+        const proceed = window.confirm(`未確認のアイテムが${totalItems - scannedItems}件あります。このまま完了しますか？`);
+        if (!proceed) return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/qr-inspections/${qrInspectionRecord.id}/complete`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                notes: `QR検品完了 - ${scannedItems}/${totalItems} 件確認`
+            })
+        });
+
+        if (!response.ok) {
+            const message = await extractErrorMessage(response);
+            throw new Error(message);
+        }
+
+        const result = await response.json();
+        showToast('QR検品を完了しました。', 'success');
+
+        if (qrModal) {
+            qrModal.hide();
+        }
+
+        await loadShipments();
+
+        alert([
+            'QR検品が完了しました。',
+            `検品合格数: ${result.passed_quantity}個`,
+            `在庫更新: ${result.current_stock_before} → ${result.current_stock_after}`,
+            `確認済みアイテム: ${scannedItems}/${totalItems}`
+        ].join('\n'));
+    } catch (error) {
+        console.error('completeQRInspection error:', error);
+        showToast(`検品完了処理に失敗しました: ${error.message}`, 'danger');
+    }
+}
+
+async function extractErrorMessage(response) {
+    try {
+        const text = await response.text();
+        if (!text) return `HTTP ${response.status}`;
+        const json = JSON.parse(text);
+        return json.error || json.message || text;
+    } catch (error) {
+        return `HTTP ${response.status}`;
+    }
+}
+
+function showToast(message, type = 'info', duration = 4000) {
+    console.log(`[${type}] ${message}`);
+    const toastContainerId = 'global-toast-container';
+    let container = document.getElementById(toastContainerId);
+
+    if (!container) {
+        container = document.createElement('div');
+        container.id = toastContainerId;
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        container.style.zIndex = 1100;
+        document.body.appendChild(container);
+    }
+
+    const tone = type === 'danger' ? 'danger' : type === 'success' ? 'success' : 'info';
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast align-items-center text-bg-${tone} border-0`;
+    toastEl.role = 'alert';
+    toastEl.ariaLive = 'assertive';
+    toastEl.ariaAtomic = 'true';
+    
+    // 改行をサポート
+    const formattedMessage = message.replace(/\n/g, '<br>');
+    
+    toastEl.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body" style="white-space: pre-wrap;">${formattedMessage}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    `;
+
+    container.appendChild(toastEl);
+
+    if (bootstrap.Toast) {
+        const toast = new bootstrap.Toast(toastEl, { delay: duration });
+        toast.show();
+    } else {
+        toastEl.style.display = 'block';
+        setTimeout(() => toastEl.remove(), duration);
+    }
+}
