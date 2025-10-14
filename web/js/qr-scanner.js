@@ -18,10 +18,17 @@ export class SafariOptimizedQRScanner {
         this.isCalibrating = false;
         this.debugMode = false;
         
+        // 新機能: 連続スキャンモードとスキャン履歴
+        this.continuousMode = options.continuousMode || false;
+        this.scanHistory = [];
+        this.maxHistorySize = options.maxHistorySize || 10;
+        this.duplicateThreshold = options.duplicateThreshold || 2000; // 2秒
+        
         // コールバック関数
         this.onResult = options.onResult || (() => {});
         this.onError = options.onError || (() => {});
         this.onStatusUpdate = options.onStatusUpdate || (() => {});
+        this.onValidate = options.onValidate || null; // 結果検証用コールバック
         
         this.initPageLifecycleHandling();
         this.detectCameras();
@@ -433,11 +440,51 @@ export class SafariOptimizedQRScanner {
     }
 
     handleQRResult(data) {
-        // 重複検出防止
+        // スキャン中でない場合は無視
         if (!this.isScanning) return;
         
+        // 重複スキャンチェック
+        const lastScan = this.scanHistory[this.scanHistory.length - 1];
+        if (lastScan && lastScan.data === data && 
+            (Date.now() - lastScan.timestamp) < this.duplicateThreshold) {
+            console.log('Duplicate scan ignored:', data);
+            return; // 重複スキャンを無視
+        }
+        
         console.log('QR detected:', data);
-        this.stopScan();
+        
+        // 結果検証（オプション）
+        if (this.onValidate && typeof this.onValidate === 'function') {
+            const validationResult = this.onValidate(data);
+            if (validationResult === false) {
+                console.warn('QR validation failed:', data);
+                this.onStatusUpdate('QRコードの検証に失敗しました');
+                
+                // 連続モードの場合は次のスキャンを待つ
+                if (!this.continuousMode) {
+                    this.stopScan();
+                }
+                return;
+            }
+        }
+        
+        // スキャン履歴に追加
+        this.scanHistory.push({
+            data: data,
+            timestamp: Date.now()
+        });
+        
+        // 履歴サイズ制限
+        if (this.scanHistory.length > this.maxHistorySize) {
+            this.scanHistory.shift();
+        }
+        
+        // 連続スキャンモードでない場合はスキャン停止
+        if (!this.continuousMode) {
+            this.stopScan();
+        }
+        
+        // 結果をコールバックで返す
         this.onResult(data);
     }
 
@@ -549,7 +596,96 @@ export class SafariOptimizedQRScanner {
             calibrationAttempts: this.calibrationAttempts,
             frameCount: this.frameCount,
             cameraCount: this.cameras.length,
-            videoReady: this.video ? this.video.readyState : 0
+            videoReady: this.video ? this.video.readyState : 0,
+            continuousMode: this.continuousMode,
+            scanHistoryCount: this.scanHistory.length
+        };
+    }
+
+    // 新機能: 手動入力
+    async manualInput(promptMessage = 'QRコードの内容を手入力してください:') {
+        return new Promise((resolve, reject) => {
+            try {
+                const input = prompt(promptMessage);
+                if (input && input.trim()) {
+                    const trimmedInput = input.trim();
+                    
+                    // 結果検証（オプション）
+                    if (this.onValidate && typeof this.onValidate === 'function') {
+                        const validationResult = this.onValidate(trimmedInput);
+                        if (validationResult === false) {
+                            reject(new Error('入力されたデータの検証に失敗しました'));
+                            return;
+                        }
+                    }
+                    
+                    // スキャン履歴に追加
+                    this.scanHistory.push({
+                        data: trimmedInput,
+                        timestamp: Date.now(),
+                        manual: true
+                    });
+                    
+                    // 履歴サイズ制限
+                    if (this.scanHistory.length > this.maxHistorySize) {
+                        this.scanHistory.shift();
+                    }
+                    
+                    // 結果をコールバックで返す
+                    this.onResult(trimmedInput);
+                    resolve(trimmedInput);
+                } else {
+                    reject(new Error('入力がキャンセルされました'));
+                }
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    // 新機能: 連続スキャンモードの切り替え
+    setContinuousMode(enabled) {
+        this.continuousMode = enabled;
+        console.log('Continuous scan mode:', enabled ? 'enabled' : 'disabled');
+        return this.continuousMode;
+    }
+
+    // 新機能: スキャン履歴の取得
+    getScanHistory() {
+        return [...this.scanHistory]; // コピーを返す
+    }
+
+    // 新機能: スキャン履歴のクリア
+    clearScanHistory() {
+        this.scanHistory = [];
+        console.log('Scan history cleared');
+    }
+
+    // 新機能: 最後のスキャン結果を取得
+    getLastScan() {
+        return this.scanHistory.length > 0 
+            ? this.scanHistory[this.scanHistory.length - 1] 
+            : null;
+    }
+
+    // 新機能: スキャン統計情報
+    getStatistics() {
+        const now = Date.now();
+        const recentScans = this.scanHistory.filter(
+            scan => (now - scan.timestamp) < 60000 // 直近1分間
+        );
+        
+        return {
+            totalScans: this.scanHistory.length,
+            recentScans: recentScans.length,
+            manualScans: this.scanHistory.filter(scan => scan.manual).length,
+            autoScans: this.scanHistory.filter(scan => !scan.manual).length,
+            oldestScan: this.scanHistory.length > 0 
+                ? new Date(this.scanHistory[0].timestamp) 
+                : null,
+            newestScan: this.scanHistory.length > 0 
+                ? new Date(this.scanHistory[this.scanHistory.length - 1].timestamp) 
+                : null
         };
     }
 }
