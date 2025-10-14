@@ -18,6 +18,11 @@ export class SafariOptimizedQRScanner {
         this.isCalibrating = false;
         this.debugMode = false;
         
+        // 詳細デバッグ機能追加
+        this.debugElements = null;
+        this.debugFrameInterval = null;
+        this.lastDebugUpdate = 0;
+        
         // 新機能: 連続スキャンモードとスキャン履歴
         this.continuousMode = options.continuousMode || false;
         this.scanHistory = [];
@@ -35,6 +40,7 @@ export class SafariOptimizedQRScanner {
         
         this.initPageLifecycleHandling();
         this.detectCameras();
+        this.initDebugElements();
     }
 
     // デバイス検出（iPad/iPhone判定強化）
@@ -131,7 +137,6 @@ export class SafariOptimizedQRScanner {
         }
     }
 
-    // Safari最適化: 段階的なカメラ初期化
     async startScan(videoElement) {
         try {
             this.video = videoElement;
@@ -144,11 +149,18 @@ export class SafariOptimizedQRScanner {
                 iosVersion: this.deviceInfo.iosVersion
             });
             
+            // デバッグ情報更新
+            this.updateDebug('ready', this.video.readyState);
+            this.updateDebug('stream', 'Initializing...');
+            this.updateDebug('detection', 'Preparing...');
+            
             this.onStatusUpdate('カメラにアクセス中...');
             
             await this.initializeCamera();
             
         } catch (error) {
+            this.updateDebug('stream', 'Error');
+            this.updateDebug('detection', 'Failed');
             this.handleError(error);
         }
     }
@@ -215,35 +227,36 @@ export class SafariOptimizedQRScanner {
         ];
 
         let lastError = null;
-        for (let i = 0; i < constraintsList.length; i++) {
-            try {
-                this.log(`Attempting constraints level ${i + 1}/${constraintsList.length}`);
-                
-                this.stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
-                
-                // ストリーム取得成功
-                const track = this.stream.getVideoTracks()[0];
-                const settings = track.getSettings();
-                
-                this.log(`Camera acquired successfully:`, {
-                    level: i + 1,
-                    resolution: `${settings.width}x${settings.height}`,
-                    fps: settings.frameRate,
-                    facingMode: settings.facingMode
-                });
-                
-                break;
-            } catch (error) {
-                this.log(`Constraints level ${i + 1} failed:`, error.name);
-                lastError = error;
-                
-                if (i === constraintsList.length - 1) {
-                    throw lastError;
+            for (let i = 0; i < constraintsList.length; i++) {
+                try {
+                    this.log(`Attempting constraints level ${i + 1}/${constraintsList.length}`);
+                    this.updateDebug('stream', `Level ${i + 1} trying...`);
+                    
+                    this.stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
+                    
+                    // ストリーム取得成功
+                    const track = this.stream.getVideoTracks()[0];
+                    const settings = track.getSettings();
+                    
+                    this.log(`Camera acquired successfully:`, {
+                        level: i + 1,
+                        resolution: `${settings.width}x${settings.height}`,
+                        fps: settings.frameRate,
+                        facingMode: settings.facingMode
+                    });
+                    
+                    this.updateDebug('stream', `Level ${i + 1} success: ${settings.width}x${settings.height}`);
+                    break;
+                } catch (error) {
+                    this.log(`Constraints level ${i + 1} failed:`, error.name);
+                    this.updateDebug('stream', `Level ${i + 1} failed: ${error.name}`);
+                    lastError = error;
+                    
+                    if (i === constraintsList.length - 1) {
+                        throw lastError;
+                    }
                 }
-            }
-        }
-
-        if (!this.stream) {
+            }        if (!this.stream) {
             throw new Error('カメラストリームの取得に失敗しました');
         }
 
@@ -256,11 +269,15 @@ export class SafariOptimizedQRScanner {
         
         // ストリームを割り当て
         this.video.srcObject = this.stream;
+        this.updateDebug('stream', 'Connected');
+        this.updateDebug('ready', this.video.readyState);
 
         // ビデオ準備待機
         await this.waitForVideoReady();
         
         this.isScanning = true;
+        this.updateDebug('detection', 'Calibrating...');
+        this.updateDebug('calibration', `${this.calibrationAttempts}/${this.maxCalibrationAttempts}`);
         
         // キャリブレーション実行
         await this.calibrateCamera();
@@ -361,7 +378,7 @@ export class SafariOptimizedQRScanner {
         });
     }
 
-    // キャリブレーション機能（Safari最適化の核心）
+    // キャリブレーション機能（Safari最適化の核心 - 強化版）
     async calibrateCamera() {
         try {
             if (this.isCalibrating || this.calibrationAttempts >= this.maxCalibrationAttempts) {
@@ -383,39 +400,55 @@ export class SafariOptimizedQRScanner {
                 throw new Error('ビデオ要素が初期化されていません');
             }
 
-            // iPad/iPhone向けのキャリブレーション期間
-            const calibrationTime = this.deviceInfo.isIOS ? 2500 : 2000;
+            // iPad/iPhone向けの強化キャリブレーション期間（3秒に延長）
+            const calibrationTime = this.deviceInfo.isIOS ? 3000 : 2000;
+            console.log(`Enhanced calibrating for ${calibrationTime}ms (iOS: ${this.deviceInfo.isIOS})`);
+            
             await new Promise(resolve => setTimeout(resolve, calibrationTime));
 
             this.isCalibrating = false;
 
-            // カメラ準備完了確認
-            if (this.video.readyState >= 2 && 
-                this.video.videoWidth > 0 && 
-                this.video.videoHeight > 0) {
+            // カメラ準備完了確認（詳細状態ログ出力）
+            const isReady = this.video.readyState >= 2 && 
+                           this.video.videoWidth > 0 && 
+                           this.video.videoHeight > 0;
+                           
+            // 詳細状態ログ出力
+            console.log('Enhanced calibration check:', {
+                readyState: this.video.readyState,
+                size: `${this.video.videoWidth}x${this.video.videoHeight}`,
+                currentTime: this.video.currentTime,
+                attempt: this.calibrationAttempts,
+                streamActive: this.stream?.active,
+                paused: this.video.paused
+            });
                 
-                this.log('Calibration successful', {
+            if (isReady) {
+                console.log('Enhanced calibration successful, starting QR detection');
+                this.log('Enhanced calibration successful', {
                     size: `${this.video.videoWidth}x${this.video.videoHeight}`,
                     readyState: this.video.readyState
                 });
                 
                 this.startQRDetection();
             } else if (this.calibrationAttempts < this.maxCalibrationAttempts) {
-                this.log('Calibration incomplete, retrying...');
-                setTimeout(() => this.calibrateCamera(), 1000);
+                console.log('Enhanced calibration incomplete, retrying...');
+                this.log('Enhanced calibration incomplete, retrying...');
+                setTimeout(() => this.calibrateCamera(), 1500);
             } else {
-                // 最大試行回数到達
-                if (this.video.readyState >= 2) {
-                    this.log('Max attempts but continuing...');
+                // 最大試行回数到達 - 柔軟な継続基準（readyState >= 1）
+                if (this.video.readyState >= 1) { // 柔軟な基準に変更
+                    console.log('Max enhanced calibration attempts but continuing with readyState >= 1...');
+                    this.log('Max attempts but continuing with flexible criteria...');
                     this.startQRDetection();
                 } else {
                     throw new Error('カメラのキャリブレーションに失敗しました');
                 }
             }
         } catch (error) {
-            this.log('Calibration error:', error);
+            this.log('Enhanced calibration error:', error);
             this.isCalibrating = false;
-            this.handleError('キャリブレーションエラー', error);
+            this.handleError('強化キャリブレーションエラー', error);
         }
     }
 
@@ -634,6 +667,8 @@ export class SafariOptimizedQRScanner {
 
     handleError(messageOrError, error) {
         this.stopScan();
+        this.updateDebug('detection', 'Error');
+        this.updateDebug('stream', 'Error');
         
         let message = 'カメラにアクセスできませんでした。';
         let actualError = error;
@@ -645,36 +680,195 @@ export class SafariOptimizedQRScanner {
             message = messageOrError;
         }
         
-        // エラータイプに応じたメッセージ
+        // iOS特化エラー処理
         if (actualError) {
             console.error('QR Scanner Error:', actualError);
             
-            switch (actualError.name) {
-                case 'NotAllowedError':
-                    message = 'カメラの使用が拒否されました。ブラウザの設定からカメラの許可を有効にしてください。';
-                    break;
-                case 'NotFoundError':
-                    message = 'カメラが見つかりませんでした。デバイスにカメラが接続されているか確認してください。';
-                    break;
-                case 'NotSupportedError':
-                    message = 'このブラウザではカメラ機能がサポートされていません。最新のSafari、Chrome、またはEdgeをお試しください。';
-                    break;
-                case 'NotReadableError':
-                    message = 'カメラが他のアプリケーションで使用中です。他のアプリを閉じてから再試行してください。';
-                    break;
-                case 'SecurityError':
-                    message = 'セキュリティ制限によりカメラにアクセスできません。HTTPS環境が必要です。';
-                    break;
-                default:
-                    // カスタムエラーメッセージがある場合
-                    if (actualError.message && !message.includes(actualError.message)) {
-                        message = `${message}\n詳細: ${actualError.message}`;
-                    }
+            // iOS特化のエラー分類とHTML形式メッセージ
+            if (this.deviceInfo.isIOS) {
+                message = this.getIOSSpecificErrorMessage(actualError);
+            } else {
+                message = this.getGenericErrorMessage(actualError);
             }
         }
 
         console.error('Final error message:', message);
         this.onError(message, actualError);
+    }
+
+    // iOS特化エラーメッセージ（HTML形式）
+    getIOSSpecificErrorMessage(error) {
+        switch (error.name) {
+            case 'NotAllowedError':
+                return `
+                    <div class="mb-3">
+                        <strong>🚫 カメラの使用が拒否されました</strong>
+                    </div>
+                    <div class="alert alert-info small">
+                        <p><strong>📱 iPhone/iPadでの解決方法:</strong></p>
+                        <ol class="mb-0">
+                            <li><strong>設定</strong> アプリを開く</li>
+                            <li><strong>Safari</strong> を選択</li>
+                            <li><strong>カメラ</strong> を選択</li>
+                            <li><strong>"許可"</strong> を選択</li>
+                            <li>このページを再読み込み</li>
+                        </ol>
+                    </div>
+                `;
+            case 'NotFoundError':
+                return `
+                    <div class="mb-3">
+                        <strong>📷 カメラが見つかりませんでした</strong>
+                    </div>
+                    <div class="alert alert-warning small">
+                        <p><strong>🔧 確認事項:</strong></p>
+                        <ul class="mb-0">
+                            <li>カメラが正常に動作しているか確認</li>
+                            <li>他のアプリでカメラが使用中でないか確認</li>
+                            <li>デバイスを再起動してみてください</li>
+                        </ul>
+                    </div>
+                `;
+            case 'NotSupportedError':
+                return `
+                    <div class="mb-3">
+                        <strong>⚠️ このiOSバージョンではサポートされていません</strong>
+                    </div>
+                    <div class="alert alert-warning small">
+                        <p><strong>🔄 推奨解決方法:</strong></p>
+                        <ul class="mb-0">
+                            <li><strong>iOSを最新バージョンに更新</strong></li>
+                            <li>Chrome for iOS または Edge アプリを使用</li>
+                            <li>カメラアプリの標準QRスキャナーを使用</li>
+                        </ul>
+                        <hr class="my-2">
+                        <small class="text-muted">
+                            💡 iOS ${this.deviceInfo.iosVersion?.major || 'Unknown'} をお使いです
+                        </small>
+                    </div>
+                `;
+            case 'NotReadableError':
+                return `
+                    <div class="mb-3">
+                        <strong>🔒 カメラが他のアプリで使用中です</strong>
+                    </div>
+                    <div class="alert alert-info small">
+                        <p><strong>📱 解決方法:</strong></p>
+                        <ul class="mb-0">
+                            <li>他のカメラアプリを終了</li>
+                            <li>アプリスイッチャーで不要なアプリを終了</li>
+                            <li>少し時間をおいてから再試行</li>
+                        </ul>
+                    </div>
+                `;
+            case 'SecurityError':
+                return `
+                    <div class="mb-3">
+                        <strong>🔐 セキュリティ制限によりアクセスできません</strong>
+                    </div>
+                    <div class="alert alert-danger small">
+                        <p><strong>🌐 必要な条件:</strong></p>
+                        <ul class="mb-0">
+                            <li><strong>HTTPS環境が必要です</strong></li>
+                            <li>信頼できるサイトからアクセス</li>
+                            <li>プライベートブラウジングモードを無効に</li>
+                        </ul>
+                    </div>
+                `;
+            case 'AbortError':
+                return `
+                    <div class="mb-3">
+                        <strong>⏹️ カメラアクセスが中断されました</strong>
+                    </div>
+                    <div class="alert alert-info small">
+                        <p><strong>🔄 対処方法:</strong></p>
+                        <ul class="mb-0">
+                            <li>「QRスキャン開始」ボタンを再度押す</li>
+                            <li>ページを再読み込み</li>
+                            <li>Safari を再起動</li>
+                        </ul>
+                    </div>
+                `;
+            default:
+                if (error.message) {
+                    if (error.message.includes('iOS Safari QR detection unavailable')) {
+                        return `
+                            <div class="mb-3">
+                                <strong>📱 iOS SafariのQR検出制限</strong>
+                            </div>
+                            <div class="alert alert-warning small">
+                                <p><strong>🔧 代替手段:</strong></p>
+                                <ul class="mb-0">
+                                    <li><strong>Chrome for iOS</strong> または <strong>Edge</strong> アプリを使用</li>
+                                    <li>カメラアプリの標準QRスキャナーを使用</li>
+                                    <li>iOS設定で実験的機能を有効化</li>
+                                </ul>
+                            </div>
+                        `;
+                    } else {
+                        return `
+                            <div class="mb-3">
+                                <strong>❌ iOS カメラエラー</strong>
+                            </div>
+                            <div class="alert alert-danger small">
+                                <p><strong>エラー詳細:</strong> ${error.message}</p>
+                                <p><strong>🔄 一般的な解決方法:</strong></p>
+                                <ul class="mb-0">
+                                    <li>Safari を再起動</li>
+                                    <li>デバイスを再起動</li>
+                                    <li>Chrome for iOS を試す</li>
+                                </ul>
+                            </div>
+                        `;
+                    }
+                }
+                return this.getGenericErrorMessage(error);
+        }
+    }
+
+    // 一般的なエラーメッセージ
+    getGenericErrorMessage(error) {
+        switch (error.name) {
+            case 'NotAllowedError':
+                return 'カメラの使用が拒否されました。ブラウザの設定からカメラの許可を有効にしてください。';
+            case 'NotFoundError':
+                return 'カメラが見つかりませんでした。デバイスにカメラが接続されているか確認してください。';
+            case 'NotSupportedError':
+                return 'このブラウザではカメラ機能がサポートされていません。最新のSafari、Chrome、またはEdgeをお試しください。';
+            case 'NotReadableError':
+                return 'カメラが他のアプリケーションで使用中です。他のアプリを閉じてから再試行してください。';
+            case 'SecurityError':
+                return 'セキュリティ制限によりカメラにアクセスできません。HTTPS環境が必要です。';
+            default:
+                if (error.message && !message.includes(error.message)) {
+                    return `カメラエラー: ${error.message}`;
+                }
+                return 'カメラにアクセスできませんでした。';
+        }
+    }
+
+    // iOS Safariでサポートされていない場合の専用エラー
+    showNotSupportedError() {
+        const message = `
+            <div class="mb-4">
+                <strong>📱 iOS Safariでは、このQR検出機能がサポートされていません。</strong>
+            </div>
+            <div class="alert alert-warning">
+                <p><strong>🔧 推奨解決方法:</strong></p>
+                <ul class="mb-0">
+                    <li><strong>iOSを最新バージョンに更新</strong></li>
+                    <li><strong>Chrome for iOS</strong> または <strong>Edge</strong> アプリを使用</li>
+                    <li><strong>カメラアプリ</strong>の標準QRスキャナーを使用</li>
+                    <li>設定 → Safari → 詳細 → 実験的な機能で「Web API」を有効化</li>
+                </ul>
+                <hr class="my-2">
+                <small class="text-muted">
+                    現在のバージョン: iOS ${this.deviceInfo.iosVersion?.major || 'Unknown'}
+                </small>
+            </div>
+        `;
+        
+        this.onError(message, new Error('BarcodeDetector API not supported on iOS Safari'));
     }
 
     // 手動キャリブレーション
@@ -686,7 +880,116 @@ export class SafariOptimizedQRScanner {
     // デバッグモード切り替え
     toggleDebug() {
         this.debugMode = !this.debugMode;
+        console.log('Debug mode:', this.debugMode ? 'enabled' : 'disabled');
+        
+        // デバッグ要素の表示/非表示切り替え
+        if (this.debugElements && this.debugElements.container) {
+            this.debugElements.container.style.display = this.debugMode ? 'block' : 'none';
+        }
+        
         return this.debugMode;
+    }
+
+    // 詳細デバッグ機能初期化
+    initDebugElements() {
+        // デバッグ要素を探すか作成
+        let debugContainer = document.getElementById('qr-debug-info');
+        if (!debugContainer) {
+            debugContainer = this.createDebugElements();
+        }
+        
+        this.debugElements = {
+            container: debugContainer,
+            ready: document.getElementById('qr-debug-ready'),
+            stream: document.getElementById('qr-debug-stream'),
+            detection: document.getElementById('qr-debug-detection'),
+            frames: document.getElementById('qr-debug-frames'),
+            device: document.getElementById('qr-debug-device'),
+            calibration: document.getElementById('qr-debug-calibration')
+        };
+        
+        // 初期状態設定
+        this.updateDebug('device', `${this.deviceInfo.isIPad ? 'iPad' : this.deviceInfo.isIPhone ? 'iPhone' : 'Other'} iOS:${this.deviceInfo.iosVersion?.major || 'N/A'}`);
+        this.updateDebug('ready', '0');
+        this.updateDebug('stream', 'Disconnected');
+        this.updateDebug('detection', 'Stopped');
+        this.updateDebug('frames', '0');
+        this.updateDebug('calibration', '0/3');
+        
+        // 非表示で開始
+        if (debugContainer) {
+            debugContainer.style.display = 'none';
+        }
+    }
+
+    // デバッグ要素を動的作成
+    createDebugElements() {
+        const debugContainer = document.createElement('div');
+        debugContainer.id = 'qr-debug-info';
+        debugContainer.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            max-width: 200px;
+            z-index: 10000;
+            display: none;
+        `;
+        
+        debugContainer.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 5px;">🐛 QR Debug Info</div>
+            <div>Device: <span id="qr-debug-device">Unknown</span></div>
+            <div>ReadyState: <span id="qr-debug-ready">0</span></div>
+            <div>Stream: <span id="qr-debug-stream">Disconnected</span></div>
+            <div>Detection: <span id="qr-debug-detection">Stopped</span></div>
+            <div>Frames: <span id="qr-debug-frames">0</span></div>
+            <div>Calibration: <span id="qr-debug-calibration">0/3</span></div>
+        `;
+        
+        // body に追加
+        document.body.appendChild(debugContainer);
+        return debugContainer;
+    }
+
+    // リアルタイム状態監視機能
+    updateDebug(type, value) {
+        if (this.debugElements && this.debugElements[type]) {
+            this.debugElements[type].textContent = value;
+        }
+        
+        // ログ出力（デバッグモード時）
+        if (this.debugMode) {
+            const now = Date.now();
+            if (now - this.lastDebugUpdate > 1000) { // 1秒間隔でログ出力
+                console.log(`[QRDebug] ${type}:`, value);
+                this.lastDebugUpdate = now;
+            }
+        }
+    }
+
+    // フレームカウンター強化
+    startFrameCounter() {
+        const countFrames = () => {
+            if (this.isScanning) {
+                this.frameCount++;
+                
+                // リアルタイム状態監視
+                this.updateDebug('frames', this.frameCount);
+                
+                // 詳細ログ出力（30フレームごと）
+                if (this.debugMode && this.frameCount % 30 === 0) {
+                    console.log(`[QRDebug] Frame count: ${this.frameCount}, Detection attempts: ${this.lastDetectionAttempt}, ReadyState: ${this.video?.readyState}`);
+                }
+                
+                requestAnimationFrame(countFrames);
+            }
+        };
+        countFrames();
     }
 
     // ステータス情報取得
