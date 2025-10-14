@@ -526,12 +526,14 @@ export class SafariOptimizedQRScanner {
             console.error('No QR detection method available');
             this.onStatusUpdate('このブラウザではQRコード検出がサポートされていません');
             
-            // iPhone Safariの場合は、ユーザーに別の方法を提案
+            // iOS Safariの場合は、ユーザーに具体的な対処方法を案内
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
             if (isIOS) {
-                this.handleError(new Error('iOS Safariでは最新バージョンが必要です。設定→Safari→詳細→実験的な機能で「Web API」を有効にしてください。'));
+                this.handleError('iOS SafariでQRコード検出を利用するには設定→Safari→詳細→実験的な機能で「Barcode QR Code」「Web API」を有効にしてから再読み込みしてください。',
+                    new Error('BarcodeDetector API unavailable on iOS Safari'));
             } else {
-                this.handleError(new Error('このブラウザではQRコード検出機能がサポートされていません。最新のSafari、Chrome、またはEdgeをお試しください。'));
+                this.handleError('このブラウザではQRコード検出機能がサポートされていません。最新のSafari、Chrome、またはEdgeをご利用ください。',
+                    new Error('No QR detection API available'));
             }
         }
     }
