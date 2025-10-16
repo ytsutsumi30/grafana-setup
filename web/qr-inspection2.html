@@ -91,6 +91,16 @@
             font-size: 16px;
         }
         
+        .shipment-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+        
         /* ボタン */
         .btn {
             padding: 15px 30px;
@@ -484,9 +494,13 @@
             <div class="start-screen">
                 <div class="start-icon">📷</div>
                 <h2>QRコードをスキャン</h2>
+                <p id="shipment-info" class="shipment-info" style="display:none;"></p>
                 <p>カメラでQRコードを読み取ります</p>
                 <button class="btn btn-primary" id="btn-start-scan">
                     📷 スキャン開始
+                </button>
+                <button class="btn btn-secondary" id="btn-back-to-ship" style="display:none; margin-top: 15px;">
+                    ← 出荷検品画面に戻る
                 </button>
             </div>
         </div>
@@ -544,6 +558,11 @@
                     <button class="btn btn-primary" id="btn-copy-result">📋 コピー</button>
                     <button class="btn btn-secondary" id="btn-rescan">🔄 再スキャン</button>
                     <button class="btn btn-success" id="btn-share" style="display:none;">📤 共有</button>
+                </div>
+                <div class="btn-group" style="margin-top: 15px;">
+                    <button class="btn btn-secondary" id="btn-back-to-ship-result" style="display:none;">
+                        ← 出荷検品画面に戻る
+                    </button>
                 </div>
             </div>
         </div>
@@ -632,10 +651,49 @@
                 this.initEventListeners();
                 this.initPageLifecycle();
                 this.detectCameras();
+                this.checkShipmentInfo();
                 
                 // 共有API対応チェック
                 if (navigator.share) {
                     document.getElementById('btn-share').style.display = 'inline-flex';
+                }
+            }
+            
+            checkShipmentInfo() {
+                // 出荷IDチェック
+                const shipmentId = sessionStorage.getItem('qr-inspection-shipment-id');
+                const returnUrl = sessionStorage.getItem('qr-inspection-return-url');
+                
+                if (shipmentId) {
+                    // 出荷ID表示
+                    const shipmentInfo = document.getElementById('shipment-info');
+                    shipmentInfo.textContent = `📦 出荷ID: ${shipmentId}`;
+                    shipmentInfo.style.display = 'inline-block';
+                    
+                    // 戻るボタン表示
+                    const backButton = document.getElementById('btn-back-to-ship');
+                    const backButtonResult = document.getElementById('btn-back-to-ship-result');
+                    backButton.style.display = 'inline-flex';
+                    backButtonResult.style.display = 'inline-flex';
+                    
+                    // 戻るボタンのイベント設定
+                    backButton.addEventListener('click', () => this.backToShip());
+                    backButtonResult.addEventListener('click', () => this.backToShip());
+                }
+            }
+            
+            backToShip() {
+                const returnUrl = sessionStorage.getItem('qr-inspection-return-url');
+                if (returnUrl) {
+                    // QRスキャン結果を保存（必要な場合）
+                    if (this.lastQRValue) {
+                        sessionStorage.setItem('qr-scan-result', this.lastQRValue);
+                    }
+                    // 出荷検品画面に戻る
+                    window.location.href = returnUrl;
+                } else {
+                    // 戻るURLがない場合はship.htmlに戻る
+                    window.location.href = 'ship.html';
                 }
             }
             
@@ -658,7 +716,9 @@
                     copyResult: document.getElementById('btn-copy-result'),
                     rescan: document.getElementById('btn-rescan'),
                     share: document.getElementById('btn-share'),
-                    retry: document.getElementById('btn-retry')
+                    retry: document.getElementById('btn-retry'),
+                    backToShip: document.getElementById('btn-back-to-ship'),
+                    backToShipResult: document.getElementById('btn-back-to-ship-result')
                 };
                 
                 // UI要素

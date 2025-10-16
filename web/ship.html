@@ -569,16 +569,17 @@
             passedQty.addEventListener('input', updateFailedQty);
         }
 
-        // QR検品開始
+        // QR検品開始 - qr-inspection2.htmlへ画面遷移
         async function startQRInspection(shipmentId) {
             try {
                 console.log('QR inspection start requested for:', shipmentId);
-                const modal = new bootstrap.Modal(document.getElementById('qrInspectionModal'));
                 
-                // QR検品フォームを生成
-                await generateQRInspectionForm(shipmentId);
+                // 出荷IDをsessionStorageに保存
+                sessionStorage.setItem('qr-inspection-shipment-id', shipmentId);
+                sessionStorage.setItem('qr-inspection-return-url', window.location.href);
                 
-                modal.show();
+                // qr-inspection2.htmlへ同一画面で遷移
+                window.location.href = 'qr-inspection2.html';
             } catch (error) {
                 console.error('Error starting QR inspection:', error);
                 alert('QR検品の開始に失敗しました: ' + error.message);
