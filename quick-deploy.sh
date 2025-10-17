@@ -13,7 +13,7 @@ set -e
 # ========================================
 # 設定
 # ========================================
-EC2_IP="57.180.82.161"
+EC2_IP="13.115.58.201"
 KEY_PATH="$HOME/.ssh/production-management-key.pem"
 PROJECT_DIR="$HOME/grafana-setup"
 REMOTE_PRIMARY_DIR="/var/www/html"
@@ -163,7 +163,6 @@ rsync -avz --delete \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
     --progress \
-    --rsync-path='sudo rsync' \
     -e "ssh -i $KEY_PATH" \
     "$PROJECT_DIR/" \
     ec2-user@$EC2_IP:"$REMOTE_PRIMARY_DIR"/ | tee "$RSYNC_LOG"
@@ -198,9 +197,9 @@ log_success "ファイル同期完了"
 # 3. 依存関係のインストール（フルデプロイの場合）
 if [ "$FULL_DEPLOY" = true ]; then
     log_info "API依存関係をインストールしています..."
-    ssh -i "$KEY_PATH" ec2-user@$EC2_IP <<EOF
-cd "$REMOTE_PRIMARY_DIR/api"
-sudo npm install --production 2>&1 | tail -5
+    ssh -i "$KEY_PATH" ec2-user@$EC2_IP << 'EOF'
+cd /var/www/html/api
+npm install --production 2>&1 | tail -5
 EOF
     log_success "依存関係インストール完了"
 fi
@@ -208,8 +207,8 @@ fi
 # 4. サービス再起動（no-restartオプションがない場合）
 if [ "$NO_RESTART" = false ]; then
     log_info "サービスを再起動しています..."
-    ssh -i "$KEY_PATH" ec2-user@$EC2_IP <<EOF
-cd "$REMOTE_PRIMARY_DIR"
+    ssh -i "$KEY_PATH" ec2-user@$EC2_IP << 'EOF'
+cd /var/www/html
 sudo docker-compose restart
 EOF
     log_success "サービス再起動完了"
@@ -250,4 +249,4 @@ echo ""
 # デプロイ時刻を記録
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 ssh -i "$KEY_PATH" ec2-user@$EC2_IP \
-    "echo '$TIMESTAMP - Deployed' | sudo tee -a $REMOTE_PRIMARY_DIR/deploy.log >/dev/null"
+    "echo '$TIMESTAMP - Deployed' >> /var/www/html/deploy.log"
