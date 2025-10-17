@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QRコードスキャナー（Safari最適化版）</title>
+    
+    <!-- キャッシュ対策 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
     <style>
@@ -164,6 +170,10 @@
                     <span class="text-2xl">📱</span>
                     QRスキャナー（Safari最適化）
                 </h1>
+                <div class="text-xs text-gray-500 text-center mt-1">
+                    <span id="build-version">構築日時: 2025-10-18 03:30 JST</span> | 
+                    <span id="page-loaded">読込: <span id="load-time"></span></span>
+                </div>
             </div>
         </div>
 
@@ -742,7 +752,7 @@
             async waitForFirstFrame() {
                 return new Promise((resolve) => {
                     let attempts = 0;
-                    const maxAttempts = 30; // 3秒間試行
+                    const maxAttempts = 50; // 5秒間試行に延長
 
                     const checkFrame = () => {
                         attempts++;
@@ -751,7 +761,8 @@
                         if (this.video.readyState === 4 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
                             console.log(`[Video] First frame ready after ${attempts * 100}ms`);
                             this.updateDebug('resolution', `${this.video.videoWidth}x${this.video.videoHeight}`);
-                            resolve();
+                            // さらに安定を待つ
+                            setTimeout(resolve, 500);
                         } else if (attempts >= maxAttempts) {
                             console.warn('[Video] First frame timeout, proceeding anyway');
                             resolve(); // タイムアウトしても続行
@@ -777,8 +788,9 @@
                 this.calibrationIndicator.classList.remove('hidden');
                 this.updateStatus(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
 
-                // キャリブレーション期間を延長（Safari最適化: 最初の起動時により長く待機）
-                const calibrationDelay = this.calibrationAttempts === 1 ? 3000 : 2000; // 初回は3秒
+                // キャリブレーション期間を大幅に延長（Safari最適化: 初回起動の安定性向上）
+                const calibrationDelay = this.calibrationAttempts === 1 ? 4000 : 2000; // 初回は4秒に延長
+                console.log(`[Calibration] Waiting ${calibrationDelay}ms for camera stabilization...`);
                 await new Promise(resolve => setTimeout(resolve, calibrationDelay));
 
                 // ビデオストリームが完全に安定しているか確認
@@ -791,17 +803,18 @@
                 this.isCalibrating = false;
 
                 if (isFullyReady) {
-                    console.log(`[Calibration] Success on attempt ${this.calibrationAttempts}`);
+                    console.log(`[Calibration] ✅ Success on attempt ${this.calibrationAttempts} - Video: ${this.video.videoWidth}x${this.video.videoHeight}`);
                     this.updateDebug('resolution', `${this.video.videoWidth}x${this.video.videoHeight}`);
-                    this.startQRDetection();
+                    // さらに少し待機してから検出開始（安定性向上）
+                    setTimeout(() => this.startQRDetection(), 500);
                 } else {
                     // ビデオがまだ準備できていない場合は再キャリブレーション
-                    console.warn(`[Calibration] Not ready (readyState: ${this.video.readyState}, size: ${this.video.videoWidth}x${this.video.videoHeight}, paused: ${this.video.paused})`);
+                    console.warn(`[Calibration] ❌ Not ready (readyState: ${this.video.readyState}, size: ${this.video.videoWidth}x${this.video.videoHeight}, paused: ${this.video.paused})`);
                     if (this.calibrationAttempts < this.maxCalibrationAttempts) {
                         setTimeout(() => this.calibrateCamera(), 1000);
                     } else {
                         // 最大試行回数に達した場合でもQR検出を開始
-                        console.warn('[Calibration] Max attempts reached, starting detection anyway');
+                        console.warn('[Calibration] ⚠️ Max attempts reached, starting detection anyway');
                         this.startQRDetection();
                     }
                 }
@@ -1128,6 +1141,20 @@
 
         // アプリケーション初期化
         document.addEventListener('DOMContentLoaded', () => {
+            // ページ読み込み時刻を表示
+            const now = new Date();
+            const loadTimeStr = now.toLocaleString('ja-JP', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit',
+                hour12: false 
+            });
+            document.getElementById('load-time').textContent = loadTimeStr;
+            console.log('[Page] Loaded at:', loadTimeStr);
+            
             new SafariOptimizedQRScanner();
         });
 
