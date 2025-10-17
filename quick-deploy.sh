@@ -13,7 +13,7 @@ set -e
 # ========================================
 # 設定
 # ========================================
-EC2_IP="13.115.58.201"
+EC2_IP="57.180.82.161"
 KEY_PATH="$HOME/.ssh/production-management-key.pem"
 PROJECT_DIR="$HOME/grafana-setup"
 REMOTE_PRIMARY_DIR="/var/www/html"
