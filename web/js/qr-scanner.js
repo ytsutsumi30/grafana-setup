@@ -3,6 +3,21 @@
  * iPad/iPhone Safari 18.6+ 対応版
  */
 
+const MODULE_URL = (typeof import.meta !== 'undefined' && import.meta.url)
+    ? new URL(import.meta.url)
+    : null;
+
+let DEFAULT_WORKER_URL = 'js/qr-scanner-worker.min.js';
+
+if (MODULE_URL) {
+    const workerUrl = new URL('./qr-scanner-worker.min.js', MODULE_URL);
+    const version = MODULE_URL.searchParams.get('v');
+    if (version) {
+        workerUrl.searchParams.set('v', version);
+    }
+    DEFAULT_WORKER_URL = workerUrl.href;
+}
+
 export class SafariOptimizedQRScanner {
     constructor(options = {}) {
         this.video = null;
@@ -15,8 +30,9 @@ export class SafariOptimizedQRScanner {
         this.maxCalibrationAttempts = 3;
         this.frameCount = 0;
         this.lastDetectionAttempt = 0;
-        this.isCalibrating = false;
-        this.debugMode = false;
+    this.isCalibrating = false;
+    this.debugMode = false;
+    this.workerPath = options.workerPath || DEFAULT_WORKER_URL;
         
         // 詳細デバッグ機能追加
         this.debugElements = null;
@@ -72,7 +88,7 @@ export class SafariOptimizedQRScanner {
         };
     }
 
-    // ページライフサイクルイベントの処理（Safari最適化）
+    // ページライフサイクルイベントの処理（Safari最適化 - safari.html実装）
     initPageLifecycleHandling() {
         // Page Visibility API
         document.addEventListener('visibilitychange', () => {
@@ -95,7 +111,7 @@ export class SafariOptimizedQRScanner {
             this.cleanupResources();
         });
 
-        // Safari用のpagehide/pageshowイベント
+        // Safari用のpagehide/pageshowイベント（safari.html実装）
         window.addEventListener('pagehide', () => {
             this.log('Page hiding - cleaning up');
             this.cleanupResources();
@@ -103,7 +119,11 @@ export class SafariOptimizedQRScanner {
 
         window.addEventListener('pageshow', (event) => {
             if (event.persisted) {
-                this.log('Page restored from BFCache');
+                // ページがBFCache（Back-Forward Cache）から復元された場合（safari.html実装）
+                this.log('Page restored from BFCache - リソースをクリーンアップ');
+                // BFCacheから復元された場合、ストリームが無効になっている可能性があるため
+                // クリーンアップして再初期化の準備をする
+                this.cleanupResources();
             }
         });
     }
@@ -273,8 +293,12 @@ export class SafariOptimizedQRScanner {
         
         // iOS向けの追加最適化（safari.html実装）
         this.video.style.objectFit = 'cover';
-        if (this.deviceInfo.isIOS) {
-            this.video.style.transform = 'scaleX(-1)'; // ミラー表示でユーザビリティ向上
+
+        // ミラー効果はフロントカメラのみ適用（ユーザビリティ向上）
+        const track = this.stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        if (this.deviceInfo.isIOS && settings.facingMode === 'user') {
+            this.video.style.transform = 'scaleX(-1)';
         }
         
         this.updateDebug('ready', this.video.readyState);
@@ -480,38 +504,89 @@ export class SafariOptimizedQRScanner {
 
     async startQRDetection() {
         this.onStatusUpdate('QRコードをスキャン中...');
-        
-        // QR Scannerライブラリを使用
-        if (typeof QrScanner !== 'undefined') {
+        this.log('QR検出を開始します...');
+        this.updateDebug('detection', 'Starting QR detection...');
+
+        // QR Scannerライブラリを使用（iOS Safari対応のUMD版）
+        // window.QrScannerとグローバルQrScannerの両方をチェック
+        const QrScannerLib = typeof QrScanner !== 'undefined' ? QrScanner : (typeof window !== 'undefined' && window.QrScanner);
+
+        if (QrScannerLib) {
             try {
-                console.log('Initializing QR Scanner with library...');
-                this.qrScanner = new QrScanner(
-                    this.video,
-                    result => this.handleQRResult(result.data),
-                    {
-                        returnDetailedScanResult: true,
-                        highlightScanRegion: false,
-                        highlightCodeOutline: false,
-                        // Safari最適化設定
-                        maxScansPerSecond: 5, // iPhone Safari向けにさらに頻度を下げる
-                        calculateScanRegion: this.calculateScanRegion.bind(this),
-                        // iPhone Safari向けの追加設定
-                        preferredCamera: 'environment'
+                if (this.workerPath) {
+                    QrScannerLib.WORKER_PATH = this.workerPath;
+                    if (typeof window !== 'undefined' && window.QrScanner) {
+                        window.QrScanner.WORKER_PATH = this.workerPath;
                     }
+                }
+
+                console.log('Initializing QR Scanner with library (UMD)...');
+                console.log('Device info:', this.deviceInfo);
+                console.log('QrScanner lib:', QrScannerLib);
+
+                // iPhone/iPad Safari最適化設定（safari.html実証済み設定を採用）
+                const scannerOptions = {
+                    returnDetailedScanResult: true,
+                    highlightScanRegion: false,
+                    highlightCodeOutline: false,
+                    // safari.html実証済み: iOS 3回/秒、その他 5回/秒（安定性重視）
+                    // 高頻度スキャンはiOS Safariでリソース競合を引き起こすため低レートを採用
+                    maxScansPerSecond: this.deviceInfo.isIOS ? 3 : 5,
+                    calculateScanRegion: this.calculateScanRegion.bind(this),
+                    preferredCamera: 'environment'
+                };
+
+                console.log('Scanner options:', scannerOptions);
+                console.log('QR Scanner initialized with settings:', {
+                    device: this.deviceInfo.isIPad ? 'iPad' : (this.deviceInfo.isIPhone ? 'iPhone' : 'Other'),
+                    iosVersion: this.deviceInfo.iosVersion,
+                    maxScansPerSecond: scannerOptions.maxScansPerSecond,
+                    optimizationProfile: 'safari.html-proven'
+                });
+
+                this.qrScanner = new QrScannerLib(
+                    this.video,
+                    result => {
+                        console.log('QR Scanner callback received:', result);
+                        this.handleQRResult(result.data || result);
+                    },
+                    scannerOptions
                 );
-                
+
+                // iOS Safari向けに明示的にカメラを設定（既存のストリームを使用）
+                if (this.deviceInfo.isIOS && this.stream) {
+                    console.log('iOS detected: using existing stream for QR scanner');
+                    // QrScannerライブラリは自動的に既存のストリームを検出して使用
+                }
+
                 await this.qrScanner.start();
-                console.log('QR Scanner started successfully');
-                
+                console.log('QR Scanner started successfully with UMD library');
+                this.log('QRスキャナーが正常に起動しました');
+                this.updateDebug('detection', 'QrScanner active');
+
                 // フレームカウンター開始
                 this.startFrameCounter();
-                
+
             } catch (error) {
-                console.warn('QR Scanner library failed, using fallback:', error);
+                console.error('QR Scanner library failed:', error);
+                console.log('Error details:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                this.log('QRスキャナーライブラリ失敗、フォールバック試行');
+                this.updateDebug('detection', 'Library failed, using fallback');
                 this.fallbackToManualDetection();
             }
         } else {
-            console.log('QR Scanner library not available, using fallback');
+            console.warn('QR Scanner library (QrScanner) not available');
+            console.log('Available objects:', {
+                QrScanner: typeof QrScanner,
+                window_QrScanner: typeof window.QrScanner,
+                windowKeys: typeof window !== 'undefined' ? Object.keys(window).filter(k => k.toLowerCase().includes('qr')) : []
+            });
+            this.log('QRスキャナーライブラリが見つかりません、フォールバック使用');
+            this.updateDebug('detection', 'Library not available');
             this.fallbackToManualDetection();
         }
     }
@@ -544,24 +619,48 @@ export class SafariOptimizedQRScanner {
 
     fallbackToManualDetection() {
         console.log('Attempting fallback detection methods...');
-        
+        this.log('フォールバック検出モードを試行中...');
+
+        // iOS Safari の場合、QR Scanner library が失敗した理由を特定
+        if (this.deviceInfo.isIOS) {
+            console.error('QR Scanner library failed on iOS Safari');
+            console.log('Possible reasons:', {
+                videoReady: this.video?.readyState,
+                streamActive: this.stream?.active,
+                videoSize: `${this.video?.videoWidth}x${this.video?.videoHeight}`,
+                iosVersion: this.deviceInfo.iosVersion
+            });
+
+            // iOS Safari では BarcodeDetector が使えないので、jsQR ライブラリを推奨
+            this.showIOSQRScannerError();
+            return;
+        }
+
+        // BarcodeDetector APIを試す（iOS Safari以外）
         if ('BarcodeDetector' in window) {
             console.log('Using BarcodeDetector API');
-            
+            this.onStatusUpdate('QRコードをスキャン中... (BarcodeDetector使用)');
+            this.updateDebug('detection', 'BarcodeDetector fallback');
+
             BarcodeDetector.getSupportedFormats().then(formats => {
                 console.log('Supported barcode formats:', formats);
+            }).catch(err => {
+                console.warn('Failed to get supported formats:', err);
             });
-            
+
             const detector = new BarcodeDetector({ formats: ['qr_code'] });
-            
+
             const detectQR = async () => {
                 if (this.isScanning && this.video.readyState >= 2) {
                     try {
                         const currentTime = Date.now();
-                        if (currentTime - this.lastDetectionAttempt > 300) { // 300ms間隔（iPhone Safari向けに調整）
+                        // iPhone/iPad向けに検出間隔を調整
+                        const detectionInterval = this.deviceInfo.isIOS ? 500 : 300;
+
+                        if (currentTime - this.lastDetectionAttempt > detectionInterval) {
                             const barcodes = await detector.detect(this.video);
                             this.lastDetectionAttempt = currentTime;
-                            
+
                             if (barcodes.length > 0) {
                                 console.log('QR code detected via BarcodeDetector:', barcodes[0].rawValue);
                                 this.handleQRResult(barcodes[0].rawValue);
@@ -570,33 +669,123 @@ export class SafariOptimizedQRScanner {
                         }
                     } catch (error) {
                         console.warn('BarcodeDetector error:', error);
+                        // NotSupportedErrorの場合はBarcodeDetectorが使えない
+                        if (error.name === 'NotSupportedError') {
+                            console.error('BarcodeDetector not supported, cannot proceed');
+                            this.updateDebug('detection', 'BarcodeDetector not supported');
+                            this.showNotSupportedError();
+                            return;
+                        }
                     }
                 }
-                
+
                 if (this.isScanning) {
                     requestAnimationFrame(detectQR);
                 }
             };
-            
+
             detectQR();
-            this.onStatusUpdate('QRコードをスキャン中... (フォールバックモード)');
             console.log('BarcodeDetector fallback active');
         } else {
-            console.error('No QR detection method available');
-            this.onStatusUpdate('このブラウザではQRコード検出がサポートされていません');
-            
-            // iOS Safariの場合は、ユーザーに具体的な対処方法を案内
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            if (isIOS) {
-                this.handleError(
-                    'iOS SafariがネイティブのQR検出APIを提供していません。iOSを最新バージョンに更新するか、Chrome/Edgeなど他のブラウザ、またはアプリ版をご利用ください。',
-                    new Error('BarcodeDetector API unavailable on iOS Safari')
-                );
-            } else {
-                this.handleError('このブラウザではQRコード検出機能がサポートされていません。最新のSafari、Chrome、またはEdgeをご利用ください。',
-                    new Error('No QR detection API available'));
-            }
+            // BarcodeDetector APIが利用できない（主にiOS Safari）
+            console.error('BarcodeDetector API not available');
+            this.updateDebug('detection', 'No detection API');
+            this.showNotSupportedError();
         }
+    }
+
+    // iOS Safari で QR Scanner library が失敗した場合の専用エラー
+    showIOSQRScannerError() {
+        this.stopScan();
+
+        const errorHTML = `
+            <div class="bg-orange-50 border-l-4 border-orange-500 p-4 mb-4">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <span class="text-2xl">📱</span>
+                    </div>
+                    <div class="ml-3 flex-1">
+                        <h3 class="text-lg font-medium text-orange-800 mb-2">
+                            iOS Safari でのQRスキャナー初期化エラー
+                        </h3>
+                        <div class="text-sm text-orange-700 space-y-2">
+                            <p><strong>🔧 解決方法:</strong></p>
+                            <ol class="list-decimal list-inside space-y-1 ml-2">
+                                <li><strong>ページを再読み込み</strong>してください（F5キーまたは画面を引き下げ）</li>
+                                <li>カメラ権限を確認: 設定 → Safari → カメラ → 許可</li>
+                                <li>他のアプリでカメラを使用していないか確認</li>
+                                <li>Safariを再起動してみてください</li>
+                                <li>iOSを<strong>最新バージョン</strong>に更新（推奨: iOS 15以降）</li>
+                            </ol>
+                            <p class="mt-3"><strong>📋 代替手段:</strong></p>
+                            <ul class="list-disc list-inside space-y-1 ml-2">
+                                <li><strong>Chrome for iOS</strong>または<strong>Edge for iOS</strong>を使用</li>
+                                <li>iOSの標準<strong>カメラアプリ</strong>でQRコードを読み取り</li>
+                                <li>「テストスキャン」ボタンで手動入力も可能です</li>
+                            </ul>
+                            <p class="mt-3 text-xs text-orange-600">
+                                ℹ️ iOS Safari ではQR Scanner library の初期化に失敗しました。上記の方法をお試しください。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        this.handleError(
+            errorHTML,
+            new Error('QR Scanner library initialization failed on iOS Safari')
+        );
+        this.onStatusUpdate('QRスキャナーの初期化に失敗しました');
+        this.updateDebug('detection', 'iOS QR Scanner failed');
+    }
+
+    // iOS Safariでサポートされていない場合の専用エラー表示
+    showNotSupportedError() {
+        this.stopScan();
+
+        const isIOS = this.deviceInfo.isIOS;
+
+        if (isIOS) {
+            const errorHTML = `
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <span class="text-2xl">⚠️</span>
+                        </div>
+                        <div class="ml-3 flex-1">
+                            <h3 class="text-lg font-medium text-red-800 mb-2">
+                                iOS SafariではQR検出APIが利用できません
+                            </h3>
+                            <div class="text-sm text-red-700 space-y-2">
+                                <p><strong>🔧 推奨解決方法:</strong></p>
+                                <ul class="list-disc list-inside space-y-1 ml-2">
+                                    <li>iOSを<strong>最新バージョン</strong>に更新してください</li>
+                                    <li><strong>Chrome for iOS</strong>または<strong>Edge for iOS</strong>をお試しください</li>
+                                    <li>iOSの<strong>カメラアプリ</strong>の標準QRスキャナーをご利用ください</li>
+                                </ul>
+                                <p class="mt-3 text-xs text-red-600">
+                                    ℹ️ iOS Safariは現在BarcodeDetector APIをサポートしていません。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            this.handleError(
+                errorHTML,
+                new Error('BarcodeDetector API unavailable on iOS Safari')
+            );
+        } else {
+            this.handleError(
+                'このブラウザではQRコード検出機能がサポートされていません。最新のChrome、Edge、またはSafariをご利用ください。',
+                new Error('No QR detection API available')
+            );
+        }
+
+        this.onStatusUpdate('QR検出APIが利用できません');
+        this.updateDebug('detection', 'No API available');
     }
 
     handleQRResult(data) {
@@ -866,35 +1055,11 @@ export class SafariOptimizedQRScanner {
             case 'SecurityError':
                 return 'セキュリティ制限によりカメラにアクセスできません。HTTPS環境が必要です。';
             default:
-                if (error.message && !message.includes(error.message)) {
+                if (error.message) {
                     return `カメラエラー: ${error.message}`;
                 }
                 return 'カメラにアクセスできませんでした。';
         }
-    }
-
-    // iOS Safariでサポートされていない場合の専用エラー
-    showNotSupportedError() {
-        const message = `
-            <div class="mb-4">
-                <strong>📱 iOS Safariでは、このQR検出機能がサポートされていません。</strong>
-            </div>
-            <div class="alert alert-warning">
-                <p><strong>🔧 推奨解決方法:</strong></p>
-                <ul class="mb-0">
-                    <li><strong>iOSを最新バージョンに更新</strong></li>
-                    <li><strong>Chrome for iOS</strong> または <strong>Edge</strong> アプリを使用</li>
-                    <li><strong>カメラアプリ</strong>の標準QRスキャナーを使用</li>
-                    <li>設定 → Safari → 詳細 → 実験的な機能で「Web API」を有効化</li>
-                </ul>
-                <hr class="my-2">
-                <small class="text-muted">
-                    現在のバージョン: iOS ${this.deviceInfo.iosVersion?.major || 'Unknown'}
-                </small>
-            </div>
-        `;
-        
-        this.onError(message, new Error('BarcodeDetector API not supported on iOS Safari'));
     }
 
     // 手動キャリブレーション

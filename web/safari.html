@@ -360,6 +360,11 @@
                 this.debugMode = false;
                 this.countdownTimer = null;
                 this.currentUrl = '';
+                this.workerPath = './js/qr-scanner-worker.min.js';
+
+                if (window.QrScanner && !window.QrScanner.WORKER_PATH) {
+                    window.QrScanner.WORKER_PATH = this.workerPath;
+                }
                 
                 this.initElements();
                 this.initEventListeners();
@@ -749,7 +754,7 @@
 
                 this.isCalibrating = true;
                 this.calibrationAttempts++;
-                
+
                 this.calibrationIndicator.classList.remove('hidden');
                 this.updateStatus(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
 
@@ -765,26 +770,35 @@
                 // iPhone/iPad向けのキャリブレーション期間（長めに設定）
                 const calibrationTime = this.isIOSDevice() ? 3000 : 2000;
                 console.log(`Calibrating for ${calibrationTime}ms (iOS: ${this.isIOSDevice()})`);
-                
+
                 await new Promise(resolve => setTimeout(resolve, calibrationTime));
 
                 this.calibrationIndicator.classList.add('hidden');
                 this.isCalibrating = false;
 
                 // カメラが完全に準備できているかチェック
-                const isReady = this.video.readyState >= 2 && 
-                               this.video.videoWidth > 0 && 
+                const isReady = this.video.readyState >= 2 &&
+                               this.video.videoWidth > 0 &&
                                this.video.videoHeight > 0;
-                               
+
                 console.log('Calibration check:', {
                     readyState: this.video.readyState,
                     size: `${this.video.videoWidth}x${this.video.videoHeight}`,
                     currentTime: this.video.currentTime,
                     attempt: this.calibrationAttempts
                 });
-                
+
                 if (isReady) {
-                    console.log('Calibration successful, starting QR detection');
+                    console.log('Calibration successful, waiting for frame stabilization...');
+                    // 初回スキャン失敗対策: フレームが安定するまで追加待機
+                    // iOS Safari では初回のフレームデータが不安定なため、追加の待機時間が必要
+                    const frameStabilizationTime = this.isIOSDevice() ? 1500 : 800;
+                    console.log(`Waiting ${frameStabilizationTime}ms for frame stabilization...`);
+                    this.updateStatus(`QRスキャン準備中...`);
+
+                    await new Promise(resolve => setTimeout(resolve, frameStabilizationTime));
+
+                    console.log('Frame stabilization complete, starting QR detection');
                     this.startQRDetection();
                 } else if (this.calibrationAttempts < this.maxCalibrationAttempts) {
                     console.log('Calibration incomplete, retrying...');
@@ -793,6 +807,10 @@
                     // 最大試行回数到達
                     if (this.video.readyState >= 1) { // 最低限のデータがあれば続行
                         console.log('Max calibration attempts but continuing...');
+                        // 最大試行時でも追加待機を入れる
+                        const frameStabilizationTime = this.isIOSDevice() ? 1500 : 800;
+                        this.updateStatus(`QRスキャン準備中...`);
+                        await new Promise(resolve => setTimeout(resolve, frameStabilizationTime));
                         this.startQRDetection();
                     } else {
                         throw new Error('カメラのキャリブレーションに失敗しました');
@@ -809,6 +827,7 @@
                 if (typeof QrScanner !== 'undefined') {
                     try {
                         console.log('Initializing QR Scanner with library...');
+                        QrScanner.WORKER_PATH = this.workerPath;
                         this.qrScanner = new QrScanner(
                             this.video,
                             result => this.handleQRResult(result.data || result),

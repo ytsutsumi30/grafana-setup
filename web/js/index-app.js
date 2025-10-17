@@ -1,7 +1,62 @@
 import SafariOptimizedQRScanner from './qr-scanner.js';
 
 const API_BASE_URL = '/api';
-const QR_WORKER_URL = 'https://unpkg.com/qr-scanner@1.4.2/qr-scanner-worker.min.js';
+const DEFAULT_WORKER_PATH = 'js/qr-scanner-worker.min.js';
+
+function formatVersionLabel(version) {
+    if (!version) {
+        return null;
+    }
+
+    const matches = version.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+    if (!matches) {
+        return null;
+    }
+
+    const [, year, month, day, hour, minute] = matches;
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function getAppBuildInfo() {
+    let version = null;
+
+    try {
+        if (typeof import.meta !== 'undefined' && import.meta.url) {
+            const metaUrl = new URL(import.meta.url);
+            version = metaUrl.searchParams.get('v');
+        }
+    } catch (error) {
+        console.warn('Failed to parse version from import.meta.url', error);
+    }
+
+    if (!version && typeof document !== 'undefined') {
+        const scripts = Array.from(document.querySelectorAll('script[src]'));
+        const target = scripts.find(script => script.src.includes('js/index-app.js'));
+
+        if (target) {
+            try {
+                const url = new URL(target.src, window.location.href);
+                version = url.searchParams.get('v');
+            } catch (error) {
+                console.warn('Failed to parse version from script tag', error);
+            }
+        }
+    }
+
+    if (!version && typeof window !== 'undefined' && window.APP_BUILD_VERSION) {
+        version = window.APP_BUILD_VERSION;
+    }
+
+    if (!version) {
+        return null;
+    }
+
+    const formatted = formatVersionLabel(version);
+    return {
+        raw: version,
+        label: formatted || version
+    };
+}
 
 let shipments = [];
 let shipmentIndex = new Map();
@@ -22,6 +77,9 @@ let qrPassedQuantity = null;
 let qrScanButton = null;
 let qrSimulateButton = null;
 
+const APP_BUILD_INFO = getAppBuildInfo();
+const QR_WORKER_URL = getWorkerPath(APP_BUILD_INFO);
+
 const bootstrapAvailable = typeof bootstrap !== 'undefined';
 if (!bootstrapAvailable) {
     console.warn('Bootstrap modal utilities are not available. Modals may not function correctly.');
@@ -31,7 +89,12 @@ if (typeof window !== 'undefined' && window.QrScanner) {
     window.QrScanner.WORKER_PATH = QR_WORKER_URL;
 }
 
+if (typeof window !== 'undefined' && APP_BUILD_INFO?.raw) {
+    window.APP_BUILD_VERSION = APP_BUILD_INFO.raw;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    renderGlobalBuildInfo();
     initializeModals();
     initializeEventListeners();
     loadShipments();
@@ -88,6 +151,28 @@ function initializeEventListeners() {
     }
     if (completeQRButton) {
         completeQRButton.addEventListener('click', completeQRInspection);
+    }
+}
+
+function renderGlobalBuildInfo() {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
+    const badge = document.getElementById('app-build-info');
+    if (!badge) {
+        return;
+    }
+
+    if (APP_BUILD_INFO) {
+        const baseLabel = `コード修正日時: ${APP_BUILD_INFO.label}`;
+        badge.textContent = APP_BUILD_INFO.raw && APP_BUILD_INFO.raw !== APP_BUILD_INFO.label
+            ? `${baseLabel} (v=${APP_BUILD_INFO.raw})`
+            : baseLabel;
+        badge.classList.remove('text-warning');
+    } else {
+        badge.textContent = 'コード修正日時: 不明';
+        badge.classList.add('text-warning');
     }
 }
 
@@ -206,6 +291,14 @@ function createShipmentCard(item) {
     card.querySelector('[data-role="view-details"]').addEventListener('click', () => openDetails(item));
 
     return card;
+}
+
+function getWorkerPath(buildInfo) {
+    const base = DEFAULT_WORKER_PATH;
+    if (buildInfo?.raw) {
+        return `${base}?v=${buildInfo.raw}`;
+    }
+    return base;
 }
 
 function formatDate(value) {
@@ -506,58 +599,37 @@ function populateDetailModal(detail) {
 
 async function openQRInspection(item) {
     try {
-        const componentsResponse = await fetch(`${API_BASE_URL}/shipping-instructions/${item.id}/components`);
-        if (!componentsResponse.ok) {
-            const message = await extractErrorMessage(componentsResponse);
-            throw new Error(message);
-        }
-
-        const components = await componentsResponse.json();
-        if (!Array.isArray(components) || !components.length) {
-            throw new Error('同梱物が登録されていません。');
-        }
-
-        const first = components[0];
-        qrContext = {
-            shipment: item,
-            shippingInstructionId: item.id,
-            productId: first.product_id,
-            shippingInstructionCode: item.instruction_id,
-            quantity: item.quantity,
-            customer: item.customer_name || '未設定',
-            productName: `${first.product_name} (${first.product_code})`,
-            currentStock: first.current_stock ?? 0,
-            items: components.map(component => ({
-                id: component.id,
-                name: component.component_name,
-                type: component.component_type,
-                qrCode: component.qr_code,
-                status: 'pending'
-            }))
-        };
-
-        renderQRInspectionContent(qrContext);
-
-        if (qrModal) {
-            qrModal.show();
+        // QR検品を別タブで開く
+        const qrInspectionUrl = `qr-inspection.html?id=${item.id}`;
+        const qrWindow = window.open(qrInspectionUrl, 'qr-inspection', 'width=1400,height=900,left=100,top=100');
+        
+        if (!qrWindow) {
+            showToast('ポップアップがブロックされました。ブラウザの設定を確認してください。', 'warning');
+            // フォールバック: 同じウィンドウで開く
+            window.location.href = qrInspectionUrl;
+        } else {
+            // 別タブが開いた場合、完了メッセージを受信するリスナーを設定
+            window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'qr-inspection-complete') {
+                    showToast(`QR検品が完了しました（${event.data.data.scannedCount}/${event.data.data.totalCount}件）`, 'success');
+                    // 出荷指示リストを再読み込み
+                    loadShipments();
+                }
+            });
         }
     } catch (error) {
         console.error('openQRInspection error:', error);
-        const container = document.getElementById('qr-inspection-content');
-        if (container) {
-            container.innerHTML = `
-                <div class="alert alert-danger">
-                    <h5 class="alert-heading">QR検品の準備に失敗しました</h5>
-                    <p class="mb-2">${error.message}</p>
-                </div>
-            `;
-        }
+        showToast(`QR検品画面を開けませんでした: ${error.message}`, 'danger');
     }
 }
 
 function renderQRInspectionContent(context) {
     const container = document.getElementById('qr-inspection-content');
     if (!container) return;
+
+    const buildInfoDisplay = APP_BUILD_INFO
+        ? `コード修正日時: ${APP_BUILD_INFO.label}${APP_BUILD_INFO.raw !== APP_BUILD_INFO.label ? ` (v=${APP_BUILD_INFO.raw})` : ''}`
+        : 'コード修正日時: 不明';
 
     const itemsHtml = context.items.map(item => `
         <div class="card qr-item-card" id="qr-item-${item.id}">
@@ -607,6 +679,7 @@ function renderQRInspectionContent(context) {
             </div>
             <div class="col-md-6">
                 <div class="qr-scanner-area w-100" id="qr-scanner-area">
+                    <div class="text-end text-muted small mb-2" id="qr-build-info">${buildInfoDisplay}</div>
                     <div class="qr-video-container" id="qr-video-wrapper" style="display:none;">
                         <video id="qr-video" playsinline webkit-playsinline muted autoplay></video>
                         <div class="qr-scan-overlay">
@@ -624,9 +697,19 @@ function renderQRInspectionContent(context) {
                         <p class="text-sm text-muted mb-3">「QRスキャン開始」ボタンを押してください</p>
                     </div>
                     <div class="mt-2" id="qr-result" style="display:none;"></div>
-                    <button class="btn btn-outline-secondary btn-sm mt-3" id="btn-simulate-qr">
-                        <i class="fas fa-vial me-1"></i>テストスキャン
-                    </button>
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-outline-secondary btn-sm" id="btn-simulate-qr">
+                            <i class="fas fa-vial me-1"></i>テストスキャン
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" id="btn-manual-input-qr">
+                            <i class="fas fa-keyboard me-1"></i>手動入力
+                        </button>
+                    </div>
+                    <div class="mt-3 p-3 bg-light rounded" id="qr-last-scanned" style="display:none;">
+                        <small class="text-muted d-block mb-1">最後に読み取ったQRコード:</small>
+                        <code class="d-block text-break mb-2" id="qr-last-value"></code>
+                        <!-- safari2.html機能: コピー/共有ボタンは動的に追加される -->
+                    </div>
                 </div>
             </div>
             <div class="col-12">
@@ -657,9 +740,14 @@ function renderQRInspectionContent(context) {
     qrPassedQuantity = document.getElementById('passed-quantity');
     qrScanButton = document.getElementById('btn-start-qr-scan');
     qrSimulateButton = document.getElementById('btn-simulate-qr');
+    const qrManualInputButton = document.getElementById('btn-manual-input-qr');
 
     if (qrSimulateButton) {
         qrSimulateButton.addEventListener('click', simulateQRScan);
+    }
+
+    if (qrManualInputButton) {
+        qrManualInputButton.addEventListener('click', manualInputQRCode);
     }
 
     // カメラ起動時の表示制御用にグローバルに保存
@@ -820,6 +908,9 @@ function resetQRState() {
 }
 
 async function handleQRScanResult(qrCode) {
+    // 読み取ったQRコードを表示
+    displayLastScannedQR(qrCode);
+    
     const success = await processQRScan(qrCode);
 
     const hasPending = qrContext?.items?.some(item => item.status === 'pending');
@@ -907,7 +998,101 @@ async function simulateQRScan() {
     }
 
     const randomItem = pendingItems[Math.floor(Math.random() * pendingItems.length)];
+    displayLastScannedQR(randomItem.qrCode);
     await processQRScan(randomItem.qrCode);
+}
+
+async function manualInputQRCode() {
+    // 入力ダイアログを表示
+    const qrCode = prompt('QRコードの値を入力してください:');
+    
+    if (!qrCode) {
+        return; // キャンセルまたは空入力
+    }
+    
+    const trimmedCode = qrCode.trim();
+    if (!trimmedCode) {
+        showToast('QRコードの値を入力してください。', 'warning');
+        return;
+    }
+    
+    // 入力値を表示
+    displayLastScannedQR(trimmedCode);
+    
+    // スキャン処理を実行
+    await processQRScan(trimmedCode);
+}
+
+function displayLastScannedQR(qrCode) {
+    const lastScannedContainer = document.getElementById('qr-last-scanned');
+    const lastValueElement = document.getElementById('qr-last-value');
+    
+    if (lastScannedContainer && lastValueElement) {
+        lastValueElement.textContent = qrCode;
+        lastScannedContainer.style.display = 'block';
+        
+        // safari2.html機能: コピーボタンを追加
+        addCopyButtonToQRDisplay(qrCode);
+    }
+}
+
+// safari2.html機能: QRコード値のコピー機能
+function addCopyButtonToQRDisplay(qrCode) {
+    const lastScannedContainer = document.getElementById('qr-last-scanned');
+    if (!lastScannedContainer) return;
+    
+    // 既存のボタンを削除
+    const existingBtn = lastScannedContainer.querySelector('.btn-copy-qr');
+    if (existingBtn) {
+        existingBtn.remove();
+    }
+    
+    // コピーボタンを作成
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn btn-sm btn-outline-primary mt-2 btn-copy-qr';
+    copyBtn.innerHTML = '<i class="fas fa-copy me-1"></i>コピー';
+    copyBtn.onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(qrCode);
+            copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>コピー完了!';
+            copyBtn.className = 'btn btn-sm btn-success mt-2 btn-copy-qr';
+            setTimeout(() => {
+                copyBtn.innerHTML = '<i class="fas fa-copy me-1"></i>コピー';
+                copyBtn.className = 'btn btn-sm btn-outline-primary mt-2 btn-copy-qr';
+            }, 2000);
+        } catch (error) {
+            console.error('コピー失敗:', error);
+            showToast('クリップボードへのコピーに失敗しました。', 'danger');
+        }
+    };
+    
+    lastScannedContainer.appendChild(copyBtn);
+}
+
+// safari2.html機能: QRコード値の共有機能
+async function shareQRCode(qrCode) {
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: 'QRコード読み取り結果',
+                text: qrCode
+            });
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('共有失敗:', error);
+                showToast('共有に失敗しました。', 'warning');
+            }
+        }
+    } else {
+        // 共有APIがない場合はコピー
+        try {
+            await navigator.clipboard.writeText(qrCode);
+            showToast('クリップボードにコピーしました。', 'success');
+        } catch (error) {
+            console.error('コピー失敗:', error);
+            showToast('コピーに失敗しました。', 'danger');
+        }
+    }
 }
 
 async function processQRScan(qrCode) {

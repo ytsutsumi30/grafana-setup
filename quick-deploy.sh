@@ -16,7 +16,8 @@ set -e
 EC2_IP="57.180.82.161"
 KEY_PATH="$HOME/.ssh/production-management-key.pem"
 PROJECT_DIR="$HOME/grafana-setup"
-REMOTE_DIR="production-management"
+REMOTE_PRIMARY_DIR="/var/www/html"
+REMOTE_SECONDARY_DIR="production-management"
 
 # 色付き出力
 RED='\033[0;31m'
@@ -107,7 +108,7 @@ show_header
 if [ "$RESTART_ONLY" = true ]; then
     log_info "サービスを再起動しています..."
     ssh -i "$KEY_PATH" ec2-user@$EC2_IP \
-        "cd ~/$REMOTE_DIR && sudo docker-compose restart"
+        "cd $REMOTE_PRIMARY_DIR && sudo docker-compose restart"
     log_success "サービス再起動完了"
     
     # ヘルスチェック
@@ -147,7 +148,10 @@ log_success "前チェック完了"
 log_info "ファイルを同期しています..."
 log_warning "除外: node_modules, .git, terraform, github-pages, *.log"
 
+RSYNC_LOG=$(mktemp)
+
 rsync -avz --delete \
+    --itemize-changes \
     --exclude='node_modules' \
     --exclude='.git' \
     --exclude='terraform' \
@@ -159,18 +163,44 @@ rsync -avz --delete \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
     --progress \
+    --rsync-path='sudo rsync' \
     -e "ssh -i $KEY_PATH" \
     "$PROJECT_DIR/" \
-    ec2-user@$EC2_IP:~/$REMOTE_DIR/ | grep -E "sending|total size|speedup" || true
+    ec2-user@$EC2_IP:"$REMOTE_PRIMARY_DIR"/ | tee "$RSYNC_LOG"
+
+# 旧ディレクトリ用の同期（ドキュメント用途）
+rsync -avz --delete \
+    --exclude='node_modules' \
+    --exclude='.git' \
+    --exclude='terraform' \
+    --exclude='github-pages' \
+    --exclude='ssl/server.key' \
+    --exclude='.env' \
+    --exclude='*.log' \
+    --exclude='.DS_Store' \
+    --exclude='__pycache__' \
+    --exclude='*.pyc' \
+    -e "ssh -i $KEY_PATH" \
+    "$PROJECT_DIR/" \
+    ec2-user@$EC2_IP:~/$REMOTE_SECONDARY_DIR/ >/dev/null 2>&1 || true
+
+if grep -qE '^(>f|<f|c|\*)' "$RSYNC_LOG"; then
+    log_info "同期されたファイル一覧"
+    grep -E '^(>f|<f|c|\*)' "$RSYNC_LOG"
+else
+    log_warning "同期対象の変更はありませんでした"
+fi
+
+rm -f "$RSYNC_LOG"
 
 log_success "ファイル同期完了"
 
 # 3. 依存関係のインストール（フルデプロイの場合）
 if [ "$FULL_DEPLOY" = true ]; then
     log_info "API依存関係をインストールしています..."
-    ssh -i "$KEY_PATH" ec2-user@$EC2_IP << 'EOF'
-cd ~/production-management/api
-npm install --production 2>&1 | tail -5
+    ssh -i "$KEY_PATH" ec2-user@$EC2_IP <<EOF
+cd "$REMOTE_PRIMARY_DIR/api"
+sudo npm install --production 2>&1 | tail -5
 EOF
     log_success "依存関係インストール完了"
 fi
@@ -178,8 +208,8 @@ fi
 # 4. サービス再起動（no-restartオプションがない場合）
 if [ "$NO_RESTART" = false ]; then
     log_info "サービスを再起動しています..."
-    ssh -i "$KEY_PATH" ec2-user@$EC2_IP << 'EOF'
-cd ~/production-management
+    ssh -i "$KEY_PATH" ec2-user@$EC2_IP <<EOF
+cd "$REMOTE_PRIMARY_DIR"
 sudo docker-compose restart
 EOF
     log_success "サービス再起動完了"
@@ -220,4 +250,4 @@ echo ""
 # デプロイ時刻を記録
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 ssh -i "$KEY_PATH" ec2-user@$EC2_IP \
-    "echo '$TIMESTAMP - Deployed' >> ~/production-management/deploy.log"
+    "echo '$TIMESTAMP - Deployed' | sudo tee -a $REMOTE_PRIMARY_DIR/deploy.log >/dev/null"
