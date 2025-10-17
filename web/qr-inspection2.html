@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR同梱物検品画面 - qr-scanner</title>
     
+    <!-- キャッシュ対策 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <!-- QR Scannerライブラリ -->
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
     
@@ -792,9 +797,12 @@
                 try {
                     const devices = await navigator.mediaDevices.enumerateDevices();
                     this.cameras = devices.filter(device => device.kind === 'videoinput');
-                    console.log(`[Camera] Detected ${this.cameras.length} camera(s):`, this.cameras);
                     
-                    // 背面カメラを優先
+                    console.log(`[Camera] Detected ${this.cameras.length} camera(s):`, this.cameras);
+                    this.updateDebug('camera', `${this.cameras.length} camera(s)`);
+                    this.updateDebug('detection', `${this.cameras.length} cameras found`);
+                    
+                    // 背面カメラを優先的に選択
                     const backCameraIndex = this.cameras.findIndex(cam => 
                         cam.label.toLowerCase().includes('back') || 
                         cam.label.toLowerCase().includes('rear') ||
@@ -807,6 +815,7 @@
                     }
                 } catch (error) {
                     console.warn('カメラ検出エラー:', error);
+                    this.updateDebug('detection', 'Camera detection failed');
                 }
             }
             
@@ -869,9 +878,12 @@
                 try {
                     this.stream = await navigator.mediaDevices.getUserMedia(constraints);
                     this.video.srcObject = this.stream;
+                    this.updateDebug('stream', 'Connected');
                     
                     const videoTrack = this.stream.getVideoTracks()[0];
-                    console.log('[Camera] Settings:', videoTrack.getSettings());
+                    const settings = videoTrack.getSettings();
+                    this.updateDebug('camera', videoTrack.label || 'Unknown');
+                    console.log('[Camera] Settings:', settings);
                     
                     this.video.setAttribute('playsinline', true);
                     this.video.setAttribute('webkit-playsinline', true);
@@ -898,7 +910,6 @@
                 return new Promise((resolve, reject) => {
                     const timeout = setTimeout(() => {
                         console.warn('[Video] Initialization timeout, but continuing...');
-                        // タイムアウトでも、readyState >= 2 なら続行を試みる
                         if (this.video.readyState >= 2) {
                             resolve();
                         } else {
@@ -906,48 +917,69 @@
                         }
                     }, 15000);
                     
-                    let checkCount = 0;
                     const checkReady = () => {
-                        checkCount++;
-                        
-                        // readyState >= 2 (HAVE_CURRENT_DATA以上) で十分
-                        // かつ、videoWidth > 0 でメタデータが読み込まれている
-                        if (this.video.readyState >= 2 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+                        // readyState 3以上 AND videoWidth/Heightが存在することを確認
+                        if (this.video.readyState >= 3 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
                             clearTimeout(timeout);
-                            console.log(`[Video] Ready after ${checkCount} checks:`, {
+                            console.log('[Video] Ready:', {
                                 readyState: this.video.readyState,
                                 size: `${this.video.videoWidth}x${this.video.videoHeight}`
                             });
                             
-                            // 再生開始を試みる
+                            // 再生開始
                             this.video.play()
                                 .then(() => {
                                     console.log('[Video] Playback started successfully');
-                                    setTimeout(resolve, 1000);
+                                    // 最初のフレームが確実に描画されるまで待機
+                                    this.waitForFirstFrame().then(resolve).catch(reject);
                                 })
                                 .catch(error => {
                                     console.warn('[Video] Playback error, but continuing:', error);
                                     // autoplayが効いている場合や、すでに再生中の場合は続行
-                                    setTimeout(resolve, 500);
+                                    this.waitForFirstFrame().then(resolve).catch(reject);
                                 });
                         } else {
-                            // 100msごとに再チェック
                             setTimeout(checkReady, 100);
                         }
                     };
                     
-                    // loadedmetadataイベントをaddEventListenerで追加（上書きではなく追加）
+                    // loadedmetadataイベントリスナー
                     const onMetadataLoaded = () => {
                         console.log('[Video] Metadata loaded');
                         setTimeout(checkReady, 100);
                     };
                     
-                    // イベントリスナーを一度削除してから追加（重複防止）
                     this.video.removeEventListener('loadedmetadata', onMetadataLoaded);
                     this.video.addEventListener('loadedmetadata', onMetadataLoaded, { once: true });
                     
-                    // 初回チェック開始
+                    // 即座にチェック開始
                     checkReady();
+                });
+            }
+            
+            // 最初のフレームが描画されるまで待機（Safari最適化）
+            async waitForFirstFrame() {
+                return new Promise((resolve) => {
+                    let attempts = 0;
+                    const maxAttempts = 50; // 5秒間試行
+
+                    const checkFrame = () => {
+                        attempts++;
+                        
+                        // videoWidth/Heightが有効で、readyStateが4（完全準備完了）
+                        if (this.video.readyState === 4 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+                            console.log(`[Video] First frame ready after ${attempts * 100}ms`);
+                            // さらに安定を待つ
+                            setTimeout(resolve, 500);
+                        } else if (attempts >= maxAttempts) {
+                            console.warn('[Video] First frame timeout, proceeding anyway');
+                            resolve(); // タイムアウトしても続行
+                        } else {
+                            setTimeout(checkFrame, 100);
+                        }
+                    };
+
+                    setTimeout(checkFrame, 100);
                 });
             }
             
@@ -962,23 +994,43 @@
                 this.calibrationOverlay.style.display = 'flex';
                 this.updateCameraStatus(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
                 
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // キャリブレーション期間を延長（Safari最適化: 初回起動の安定性向上）
+                const calibrationDelay = this.calibrationAttempts === 1 ? 4000 : 2000; // 初回は4秒
+                console.log(`[Calibration] Waiting ${calibrationDelay}ms for camera stabilization...`);
+                await new Promise(resolve => setTimeout(resolve, calibrationDelay));
+                
+                // ビデオストリームが完全に安定しているか確認
+                const isFullyReady = this.video.readyState === 4 && 
+                                    this.video.videoWidth > 0 && 
+                                    this.video.videoHeight > 0 &&
+                                    !this.video.paused;
                 
                 this.calibrationOverlay.style.display = 'none';
                 this.isCalibrating = false;
                 
-                if (this.video.readyState === 4 && this.video.videoWidth > 0) {
-                    this.startQRDetection();
+                if (isFullyReady) {
+                    console.log(`[Calibration] ✅ Success on attempt ${this.calibrationAttempts} - Video: ${this.video.videoWidth}x${this.video.videoHeight}`);
+                    // さらに少し待機してから検出開始（安定性向上）
+                    setTimeout(() => this.startQRDetection(), 500);
                 } else {
-                    setTimeout(() => this.calibrateCamera(), 1000);
+                    // ビデオがまだ準備できていない場合は再キャリブレーション
+                    console.warn(`[Calibration] ❌ Not ready (readyState: ${this.video.readyState}, size: ${this.video.videoWidth}x${this.video.videoHeight}, paused: ${this.video.paused})`);
+                    if (this.calibrationAttempts < this.maxCalibrationAttempts) {
+                        setTimeout(() => this.calibrateCamera(), 1000);
+                    } else {
+                        // 最大試行回数に達した場合でもQR検出を開始
+                        console.warn('[Calibration] ⚠️ Max attempts reached, starting detection anyway');
+                        this.startQRDetection();
+                    }
                 }
             }
             
             async startQRDetection() {
                 this.updateCameraStatus('QRコードをスキャン中...');
                 this.scanLine.style.display = 'block';
+                this.updateDebug('detection', 'Starting');
                 
-                // Phase 1: iOS最適化
+                // iOS デバイス検出
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
                 
                 if (typeof QrScanner !== 'undefined') {
@@ -992,22 +1044,26 @@
                                 returnDetailedScanResult: true,
                                 highlightScanRegion: false,
                                 highlightCodeOutline: false,
-                                maxScansPerSecond: isIOS ? 3 : 5,  // Phase 1
-                                preferredCamera: 'environment',  // Phase 1
-                                calculateScanRegion: this.calculateScanRegion.bind(this)  // Phase 2
+                                maxScansPerSecond: isIOS ? 3 : 5,  // iOS: 3回/秒、その他: 5回/秒
+                                preferredCamera: 'environment',  // 背面カメラ優先
+                                calculateScanRegion: this.calculateScanRegion.bind(this)
                             }
                         );
                         
                         await this.qrScanner.start();
+                        this.updateDebug('detection', 'QrScanner active');
+                        this.updateDebug('method', 'QrScanner');
                         console.log(`[QR] QrScanner started (iOS: ${isIOS}, rate: ${isIOS ? 3 : 5}/sec)`);
                         this.showStatus('QRコードをスキャン中...', 'info');
                         this.startFrameCounter();
                     } catch (error) {
                         console.warn('QR Scanner failed, using fallback:', error);
+                        this.showStatus('QrScannerエラー、フォールバック中...', 'error');
                         this.fallbackToManualDetection();
                     }
                 } else {
                     console.warn('QrScanner library not available');
+                    this.showStatus('QrScannerライブラリ未検出、フォールバック中...', 'error');
                     this.fallbackToManualDetection();
                 }
             }
@@ -1039,6 +1095,7 @@
                         if (this.isScanning && this.video.readyState === 4) {
                             try {
                                 const currentTime = Date.now();
+                                // iOS最適化: 200ms間隔（5回/秒相当）
                                 if (currentTime - this.lastDetectionAttempt > 200) {
                                     const barcodes = await detector.detect(this.video);
                                     this.lastDetectionAttempt = currentTime;
@@ -1060,12 +1117,15 @@
                     };
                     
                     detectQR();
+                    this.updateDebug('detection', 'BarcodeDetector active');
+                    this.updateDebug('method', 'BarcodeDetector');
                     this.showStatus('BarcodeDetectorでスキャン中...', 'info');
                     console.log('[QR] Fallback to BarcodeDetector');
                 } else {
                     this.detectionMethod = 'none';
+                    this.updateDebug('method', 'None (Error)');
                     console.error('[QR] No detection method available');
-                    this.handleError(new Error('QRコード検出機能がサポートされていません'));
+                    this.handleError(new Error('QRコード検出機能がサポートされていません。最新のブラウザをご利用ください。'));
                 }
             }
             
@@ -1080,9 +1140,11 @@
             }
             
             handleQRResult(data) {
+                // 重複検出防止
                 if (!this.isScanning) return;
                 
                 this.lastQRValue = data;
+                this.updateDebug('detection', 'QR detected!');
                 console.log('[QR] Detected:', data);
                 
                 // QR検出時はスキャンを停止してリソースをクリーンアップ
@@ -1243,22 +1305,14 @@
                     this.stream = null;
                 }
                 
-                if (this.video) {
-                    // srcObjectをnullに設定
-                    if (this.video.srcObject) {
-                        this.video.srcObject = null;
-                    }
-                    
-                    // 一時停止
+                if (this.video && this.video.srcObject) {
+                    this.video.srcObject = null;
                     this.video.pause();
-                    
-                    // イベントリスナーをクリーンアップ
-                    this.video.onloadedmetadata = null;
-                    this.video.oncanplay = null;
-                    this.video.oncanplaythrough = null;
-                    this.video.onerror = null;
                 }
                 
+                this.updateDebug('stream', 'Disconnected');
+                this.updateDebug('detection', 'Stopped');
+                this.updateDebug('method', '-');
                 this.detectionMethod = 'none';
             }
             
