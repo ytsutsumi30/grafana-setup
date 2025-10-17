@@ -717,14 +717,15 @@
                     const checkReady = () => {
                         this.updateDebug('ready', this.video.readyState);
                         
-                        if (this.video.readyState >= 3) { // HAVE_FUTURE_DATA以上
+                        // readyState 3以上 AND videoWidth/Heightが存在することを確認
+                        if (this.video.readyState >= 3 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
                             clearTimeout(timeout);
                             
                             // 再生開始
                             this.video.play()
                                 .then(() => {
-                                    // 追加の待機時間（Safari最適化）
-                                    setTimeout(resolve, 1000);
+                                    // 最初のフレームが確実に描画されるまで待機
+                                    this.waitForFirstFrame().then(resolve).catch(reject);
                                 })
                                 .catch(reject);
                         } else {
@@ -734,6 +735,33 @@
 
                     this.video.onloadedmetadata = checkReady;
                     checkReady(); // 即座にチェック開始
+                });
+            }
+
+            // 最初のフレームが描画されるまで待機（Safari最適化）
+            async waitForFirstFrame() {
+                return new Promise((resolve) => {
+                    let attempts = 0;
+                    const maxAttempts = 30; // 3秒間試行
+
+                    const checkFrame = () => {
+                        attempts++;
+                        
+                        // videoWidth/Heightが有効で、readyStateが4（完全準備完了）
+                        if (this.video.readyState === 4 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+                            console.log(`[Video] First frame ready after ${attempts * 100}ms`);
+                            this.updateDebug('resolution', `${this.video.videoWidth}x${this.video.videoHeight}`);
+                            resolve();
+                        } else if (attempts >= maxAttempts) {
+                            console.warn('[Video] First frame timeout, proceeding anyway');
+                            resolve(); // タイムアウトしても続行
+                        } else {
+                            setTimeout(checkFrame, 100);
+                        }
+                    };
+
+                    // 即座にチェック開始
+                    setTimeout(checkFrame, 100);
                 });
             }
 
@@ -749,18 +777,33 @@
                 this.calibrationIndicator.classList.remove('hidden');
                 this.updateStatus(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
 
-                // キャリブレーション期間（Safari最適化）
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // キャリブレーション期間を延長（Safari最適化: 最初の起動時により長く待機）
+                const calibrationDelay = this.calibrationAttempts === 1 ? 3000 : 2000; // 初回は3秒
+                await new Promise(resolve => setTimeout(resolve, calibrationDelay));
+
+                // ビデオストリームが完全に安定しているか確認
+                const isFullyReady = this.video.readyState === 4 && 
+                                    this.video.videoWidth > 0 && 
+                                    this.video.videoHeight > 0 &&
+                                    !this.video.paused;
 
                 this.calibrationIndicator.classList.add('hidden');
                 this.isCalibrating = false;
 
-                // カメラが完全に準備できているかチェック
-                if (this.video.readyState === 4 && this.video.videoWidth > 0) {
+                if (isFullyReady) {
+                    console.log(`[Calibration] Success on attempt ${this.calibrationAttempts}`);
+                    this.updateDebug('resolution', `${this.video.videoWidth}x${this.video.videoHeight}`);
                     this.startQRDetection();
                 } else {
-                    // 再キャリブレーション
-                    setTimeout(() => this.calibrateCamera(), 1000);
+                    // ビデオがまだ準備できていない場合は再キャリブレーション
+                    console.warn(`[Calibration] Not ready (readyState: ${this.video.readyState}, size: ${this.video.videoWidth}x${this.video.videoHeight}, paused: ${this.video.paused})`);
+                    if (this.calibrationAttempts < this.maxCalibrationAttempts) {
+                        setTimeout(() => this.calibrateCamera(), 1000);
+                    } else {
+                        // 最大試行回数に達した場合でもQR検出を開始
+                        console.warn('[Calibration] Max attempts reached, starting detection anyway');
+                        this.startQRDetection();
+                    }
                 }
             }
 
