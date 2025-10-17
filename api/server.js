@@ -27,6 +27,9 @@ const pool = new Pool({
     database: process.env.DB_NAME || 'production_db',
     user: process.env.DB_USER || 'production_user',
     password: process.env.DB_PASSWORD || 'production_pass',
+    ssl: {
+        rejectUnauthorized: false // RDS自己署名証明書対応
+    }
 });
 
 // Express アプリケーション設定
