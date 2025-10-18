@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR同梱物検品 - 出荷検品システム</title>
     
+    <!-- バージョン情報 -->
+    <meta name="version" content="2.1.1">
+    <meta name="build-date" content="2025-10-18">
+    <meta name="git-commit" content="61743a8">
+    
     <!-- キャッシュ制御メタタグ（iOS Safari対応） -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
@@ -325,6 +330,10 @@
                     <button type="button" class="btn btn-secondary" onclick="window.close()">
                         <i class="fas fa-times me-2"></i>キャンセル
                     </button>
+                    <small class="text-muted ms-2" id="version-info">
+                        v<span id="app-version">2.1.1</span> 
+                        (<span id="build-date">2025-10-18</span>)
+                    </small>
                 </div>
                 <div class="col-auto">
                     <button type="button" class="btn btn-success btn-lg" id="btn-complete-qr-inspection">
@@ -347,6 +356,11 @@
     
     class SafariOptimizedQRInspection {
         constructor() {
+            // バージョン情報
+            this.version = '2.1.1';
+            this.buildDate = '2025-10-18';
+            this.gitCommit = '61743a8';
+            
             // safari.html統合: QRスキャナー基本プロパティ
             this.video = null;
             this.stream = null;
@@ -374,11 +388,33 @@
         }
         
         init() {
+            this.logVersionInfo();
             this.initElements();
             this.initEventListeners();
             this.initPageLifecycleHandling();  // safari.html統合
             this.detectCameras();  // safari.html統合
             this.loadMockData();
+        }
+        
+        // バージョン情報をログ出力
+        logVersionInfo() {
+            console.log('%c╔════════════════════════════════════════════╗', 'color: #00a8ff; font-weight: bold;');
+            console.log('%c║  QR同梱物検品システム                      ║', 'color: #00a8ff; font-weight: bold;');
+            console.log('%c║  Safari最適化QRスキャナー統合版             ║', 'color: #00a8ff; font-weight: bold;');
+            console.log('%c╠════════════════════════════════════════════╣', 'color: #00a8ff; font-weight: bold;');
+            console.log('%c║  Version:    ' + this.version.padEnd(30) + '║', 'color: #0be881;');
+            console.log('%c║  Build Date: ' + this.buildDate.padEnd(30) + '║', 'color: #0be881;');
+            console.log('%c║  Git Commit: ' + this.gitCommit.padEnd(30) + '║', 'color: #0be881;');
+            console.log('%c║  User Agent: ' + navigator.userAgent.substring(0, 28).padEnd(30) + '║', 'color: #ffd32a;');
+            console.log('%c╚════════════════════════════════════════════╝', 'color: #00a8ff; font-weight: bold;');
+            
+            // グローバルに公開（デバッグ用）
+            window.QR_INSPECTION_VERSION = {
+                version: this.version,
+                buildDate: this.buildDate,
+                gitCommit: this.gitCommit,
+                timestamp: new Date().toISOString()
+            };
         }
         
         initElements() {
