@@ -720,30 +720,61 @@
             // Safari最適化: より確実なビデオ準備待機
             async waitForVideoReady() {
                 return new Promise((resolve, reject) => {
+                    let playbackStarted = false;
+
                     const timeout = setTimeout(() => {
-                        reject(new Error('ビデオ初期化タイムアウト'));
+                        const readyState = this.video.readyState;
+                        console.warn('[Video] Initialization timeout, evaluating readiness...', readyState);
+                        this.updateDebug('ready', readyState);
+
+                        // readyState 2 (HAVE_CURRENT_DATA) まで到達していれば続行
+                        if (readyState >= 2) {
+                            console.warn('[Video] Proceeding with forced playback after timeout');
+                            startPlayback();
+                        } else {
+                            reject(new Error('ビデオ初期化タイムアウト'));
+                        }
                     }, 15000); // 15秒に延長
 
+                    const startPlayback = () => {
+                        if (playbackStarted) {
+                            return;
+                        }
+                        playbackStarted = true;
+                        clearTimeout(timeout);
+                        this.video.play()
+                            .then(() => {
+                                console.log('[Video] Playback started successfully');
+                                this.waitForFirstFrame().then(resolve).catch(reject);
+                            })
+                            .catch(error => {
+                                console.warn('[Video] Playback error, continuing anyway:', error);
+                                this.waitForFirstFrame().then(resolve).catch(reject);
+                            });
+                    };
+
                     const checkReady = () => {
-                        this.updateDebug('ready', this.video.readyState);
-                        
+                        const readyState = this.video.readyState;
+                        this.updateDebug('ready', readyState);
+
                         // readyState 3以上 AND videoWidth/Heightが存在することを確認
-                        if (this.video.readyState >= 3 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-                            clearTimeout(timeout);
-                            
-                            // 再生開始
-                            this.video.play()
-                                .then(() => {
-                                    // 最初のフレームが確実に描画されるまで待機
-                                    this.waitForFirstFrame().then(resolve).catch(reject);
-                                })
-                                .catch(reject);
+                        if (readyState >= 3 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+                            console.log('[Video] Ready:', {
+                                readyState,
+                                size: `${this.video.videoWidth}x${this.video.videoHeight}`
+                            });
+                            startPlayback();
                         } else {
                             setTimeout(checkReady, 100);
                         }
                     };
 
-                    this.video.onloadedmetadata = checkReady;
+                    const onMetadataLoaded = () => {
+                        console.log('[Video] Metadata loaded');
+                        setTimeout(checkReady, 100);
+                    };
+
+                    this.video.addEventListener('loadedmetadata', onMetadataLoaded, { once: true });
                     checkReady(); // 即座にチェック開始
                 });
             }

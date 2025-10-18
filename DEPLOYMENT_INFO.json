@@ -1,13 +1,13 @@
 {
   "version": "2.1.1",
   "buildDate": "2025-10-18",
-  "gitCommit": "61743a8",
+  "gitCommit": "55d0478",
   "gitBranch": "main",
-  "deployedAt": "2025-10-18T11:51:39Z",
+  "deployedAt": "2025-10-18T13:47:28Z",
   "deployedBy": "tsutsumi@hp13-tsutsumi",
   "files": {
-    "web/qr-inspection.html": {"md5": "106a8573bbb4e9531e5f4d8e150be1c2", "size": 53781},
-    "web/qr-inspection2.html": {"md5": "106a8573bbb4e9531e5f4d8e150be1c2", "size": 53781},
+    "web/qr-inspection.html": {"md5": "78ca86048e312f77304d231448028363", "size": 55505},
+    "web/qr-inspection2.html": {"md5": "78ca86048e312f77304d231448028363", "size": 55505},
     "web/index.html": {"md5": "5c967b72cf18389f4ecbe6971303373d", "size": 15256},
     "api/server.js": {"md5": "d0408979f8d5f7632d18fb1ccc487e48", "size": 35191},
     "docker-compose.yml": {"md5": "b1e5bac7e646896a3dcf84b051c7b938", "size": 3091}
