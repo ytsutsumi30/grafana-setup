@@ -164,6 +164,9 @@
                             <button class="btn btn-warning me-2" onclick="startQRInspection('SHIP001')">
                                 <i class="fas fa-qrcode me-1"></i>QR検品
                             </button>
+                            <button class="btn btn-warning me-2" onclick="startQRInspectionAndroid('SHIP001')">
+                                <i class="fab fa-android me-1"></i>QR検品(Android)
+                            </button>
                             <button class="btn btn-outline-secondary" onclick="viewDetails('SHIP001')">
                                 <i class="fas fa-eye me-1"></i>詳細表示
                             </button>
@@ -201,6 +204,9 @@
                             <button class="btn btn-warning me-2" onclick="startQRInspection('SHIP002')">
                                 <i class="fas fa-qrcode me-1"></i>QR検品
                             </button>
+                            <button class="btn btn-warning me-2" onclick="startQRInspectionAndroid('SHIP002')">
+                                <i class="fab fa-android me-1"></i>QR検品(Android)
+                            </button>
                             <button class="btn btn-outline-secondary" onclick="viewDetails('SHIP002')">
                                 <i class="fas fa-eye me-1"></i>詳細表示
                             </button>
@@ -237,6 +243,9 @@
                             </button>
                             <button class="btn btn-warning me-2" onclick="startQRInspection('SHIP003')">
                                 <i class="fas fa-qrcode me-1"></i>QR検品
+                            </button>
+                            <button class="btn btn-warning me-2" onclick="startQRInspectionAndroid('SHIP003')">
+                                <i class="fab fa-android me-1"></i>QR検品(Android)
                             </button>
                             <button class="btn btn-outline-secondary" onclick="viewDetails('SHIP003')">
                                 <i class="fas fa-eye me-1"></i>詳細表示
@@ -583,6 +592,23 @@
             } catch (error) {
                 console.error('Error starting QR inspection:', error);
                 alert('QR検品の開始に失敗しました: ' + error.message);
+            }
+        }
+
+        // QR検品開始(Android版) - qr-ins-android.htmlへ画面遷移
+        async function startQRInspectionAndroid(shipmentId) {
+            try {
+                console.log('QR inspection (Android) start requested for:', shipmentId);
+                
+                // 出荷IDをsessionStorageに保存
+                sessionStorage.setItem('qr-inspection-shipment-id', shipmentId);
+                sessionStorage.setItem('qr-inspection-return-url', window.location.href);
+                
+                // qr-ins-android.htmlへ同一画面で遷移
+                window.location.href = 'qr-ins-android.html';
+            } catch (error) {
+                console.error('Error starting QR inspection (Android):', error);
+                alert('QR検品(Android)の開始に失敗しました: ' + error.message);
             }
         }
 
