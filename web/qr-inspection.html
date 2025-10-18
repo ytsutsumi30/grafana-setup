@@ -237,13 +237,16 @@
                         </h5>
                     </div>
                     <div class="card-body">
-                        <!-- 検品者名入力 -->
+                        <!-- 検品者名選択 -->
                         <div class="mb-3">
                             <label for="qr-inspector-name" class="form-label">
                                 <i class="fas fa-user me-1"></i>検品者名 <span class="text-danger">*</span>
                             </label>
-                            <input type="text" class="form-control" id="qr-inspector-name" 
-                                   placeholder="検品者名を入力してください" required>
+                            <select class="form-select" id="qr-inspector-name" required>
+                                <option value="田中太郎" selected>田中太郎</option>
+                                <option value="佐藤花子">佐藤花子</option>
+                                <option value="山田次郎">山田次郎</option>
+                            </select>
                         </div>
 
                         <!-- スキャナーエリア -->
@@ -529,12 +532,14 @@
         
         async handleStartScan() {
             // 検品者名チェック
-            this.inspectorName = this.inspectorNameInput.value.trim();
+            this.inspectorName = this.inspectorNameInput.value;
             if (!this.inspectorName) {
-                alert('検品者名を入力してください');
+                alert('検品者名を選択してください');
                 this.inspectorNameInput.focus();
                 return;
             }
+            
+            console.log(`[Start] Starting scan for inspector: ${this.inspectorName}`);
             
             try {
                 await this.startScan();
@@ -617,14 +622,33 @@
                 return;
             }
             
+            console.log('[Switch] Switching camera...');
             this.showStatus('カメラを切り替えています...', 'info');
             
             // 次のカメラへ
             this.cameraIndex = (this.cameraIndex + 1) % this.cameras.length;
             
-            // スキャンを停止して再開
+            // 現在のスキャン状態を保存
             const wasScanning = this.isScanning;
-            this.cleanupResources();
+            
+            // 一時的にスキャンを停止（フラグはまだ保持）
+            if (this.qrScanner) {
+                try {
+                    this.qrScanner.stop();
+                    this.qrScanner.destroy();
+                } catch (error) {
+                    console.warn('[Switch] QrScanner cleanup error:', error);
+                }
+                this.qrScanner = null;
+            }
+            
+            if (this.stream) {
+                this.stream.getTracks().forEach(track => {
+                    track.stop();
+                    console.log(`[Switch] Stopped track: ${track.kind}`);
+                });
+                this.stream = null;
+            }
             
             if (wasScanning) {
                 // 切り替え後に再スタート
@@ -632,9 +656,10 @@
                     try {
                         await this.initializeCamera();
                         this.showStatus(`カメラ ${this.cameraIndex + 1}/${this.cameras.length} に切り替えました`, 'success');
+                        console.log('[Switch] Camera switched successfully');
                     } catch (error) {
-                        this.showStatus('カメラ切り替えエラー', 'error');
-                        console.error('Camera switch error:', error);
+                        this.showStatus('カメラ切り替えエラー', 'danger');
+                        console.error('[Switch] Camera switch error:', error);
                     }
                 }, 500);
             }
@@ -1003,9 +1028,13 @@
         }
         
         stopScan() {
+            console.log('[Stop] Stopping scan...');
+            
+            // フラグを最初に設定（他の処理が参照する前に）
             this.isScanning = false;
             this.isCalibrating = false;
             
+            // アニメーション停止
             if (this.scanningAnimation) {
                 this.scanningAnimation.style.display = 'none';
             }
@@ -1013,16 +1042,23 @@
                 this.calibrationIndicator.style.display = 'none';
             }
             
+            // リソースクリーンアップ
             this.cleanupResources();
             
-            // UI をリセット
-            this.inspectionContent.innerHTML = '';
+            // UIリセット
+            this.inspectionContent.innerHTML = '<div class="text-center text-muted py-5"><p>QRスキャナーは停止しました</p></div>';
+            
+            // ボタンを開始状態に戻す
             this.btnStartScan.innerHTML = '<i class="fas fa-camera me-2"></i>QRスキャン開始';
             this.btnStartScan.classList.remove('btn-danger');
             this.btnStartScan.classList.add('btn-primary');
-            this.btnStartScan.onclick = () => this.handleStartScan();
+            
+            // イベントリスナーを再設定
+            this.btnStartScan.onclick = null; // 古いリスナーを削除
+            this.btnStartScan.addEventListener('click', () => this.handleStartScan(), { once: true });
             
             this.showStatus('スキャンを停止しました', 'info');
+            console.log('[Stop] Scan stopped successfully');
         }
         
         // safari.html統合: リソースクリーンアップ
