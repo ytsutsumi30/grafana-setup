@@ -595,7 +595,7 @@
             }
         }
 
-        // QR検品開始(Android版) - qr-ins-android.htmlへ画面遷移
+    // QR検品開始(Android版) - android.htmlへ画面遷移
         async function startQRInspectionAndroid(shipmentId) {
             try {
                 console.log('QR inspection (Android) start requested for:', shipmentId);
@@ -604,8 +604,8 @@
                 sessionStorage.setItem('qr-inspection-shipment-id', shipmentId);
                 sessionStorage.setItem('qr-inspection-return-url', window.location.href);
                 
-                // qr-ins-android.htmlへ同一画面で遷移
-                window.location.href = 'qr-ins-android.html';
+                // android.htmlへ同一画面で遷移
+                window.location.href = 'android.html';
             } catch (error) {
                 console.error('Error starting QR inspection (Android):', error);
                 alert('QR検品(Android)の開始に失敗しました: ' + error.message);

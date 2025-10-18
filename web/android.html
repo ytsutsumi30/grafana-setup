@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QRコードスキャナー（Android / Chrome対応版）</title>
+    <title>QRコードスキャナー - Android/Chrome最適化版</title>
     
     <!-- キャッシュ対策 -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -168,7 +168,7 @@
             <div class="px-4 py-4">
                 <h1 class="text-xl font-bold text-gray-900 text-center flex items-center justify-center gap-2">
                     <span class="text-2xl">📱</span>
-                    QRスキャナー（Android / Chrome）
+                    QRスキャナー - Android/Chrome最適化版
                 </h1>
                 <div class="text-xs text-gray-500 text-center mt-1">
                     <span id="build-version">構築日時: 2025-10-18 03:30 JST</span> | 
@@ -184,20 +184,22 @@
                     <div class="text-6xl mb-4">📷</div>
                     <h2 class="text-xl font-semibold mb-3 text-gray-900">QRコードをスキャン</h2>
                     <p class="text-gray-600 mb-6 max-w-sm mx-auto">
-                        Android / Chrome 向けに調整済みの高速QRスキャンです
+                        Android/Chrome向けに最適化された高速QRスキャナー
                     </p>
                     <button id="start-scan" class="bg-blue-600 text-white px-8 py-4 rounded-xl font-medium hover:bg-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
                         📷 スキャン開始
                     </button>
                 </div>
                 
-                <!-- Android / Chrome 推奨事項 -->
+                <!-- Android/Chrome 推奨事項 -->
                 <div class="bg-emerald-50 border border-emerald-200 rounded-xl shadow-sm p-6 text-left max-w-md mx-auto">
-                    <h3 class="font-semibold text-emerald-800 mb-3">🤖 Android / Chrome 推奨設定</h3>
+                    <h3 class="font-semibold text-emerald-800 mb-3">🤖 Android/Chrome 推奨設定</h3>
                     <ul class="text-sm text-emerald-700 space-y-1">
-                        <li>• カメラ許可を「許可」に設定してください</li>
-                        <li>• 画面回転を固定するとQRが合わせやすくなります</li>
-                        <li>• 失敗時は「再調整」ボタンでカメラをリセットできます</li>
+                        <li>• ブラウザのカメラ許可を「許可」に設定</li>
+                        <li>• 明るい場所でQRコードを画面中央に合わせる</li>
+                        <li>• 画面回転ロックをONにすると安定します</li>
+                        <li>• 失敗時は「再調整」ボタンを押してください</li>
+                    </ul>
                     </ul>
                 </div>
             </div>
@@ -347,13 +349,13 @@
                     <p id="error-message" class="text-red-600 mb-6"></p>
                     
                     <div class="permission-guide rounded-xl p-6 text-left mb-6">
-                        <h3 class="font-semibold text-blue-900 mb-3">🔧 解決方法（Android / Chrome）</h3>
+                        <h3 class="font-semibold text-blue-900 mb-3">🔧 解決方法（Android/Chrome）</h3>
                         <ol class="text-sm text-blue-800 space-y-2">
-                            <li><strong>1.</strong> ブラウザ右上の︙メニューを開く</li>
-                            <li><strong>2.</strong> 「設定」または「サイトの設定」を選択</li>
-                            <li><strong>3.</strong> 「カメラ」を開き、このサイトを「許可」に設定</li>
-                            <li><strong>4.</strong> タブを再読み込みして再度スキャン</li>
-                            <li><strong>5.</strong> それでも失敗する場合は端末を再起動</li>
+                            <li><strong>1.</strong> Chromeブラウザの右上メニュー（︙）を開く</li>
+                            <li><strong>2.</strong> 「設定」→「サイトの設定」を選択</li>
+                            <li><strong>3.</strong> 「カメラ」を開き、このサイトを「許可」に変更</li>
+                            <li><strong>4.</strong> ページを再読み込みして再度スキャン開始</li>
+                            <li><strong>5.</strong> それでも失敗する場合はブラウザを再起動</li>
                         </ol>
                     </div>
                     
@@ -372,7 +374,7 @@
         <!-- フッター -->
         <div class="bg-white border-t border-gray-200 p-4 text-center">
             <p class="text-sm text-gray-500 mb-1">🔒 HTTPS環境で安全に動作</p>
-            <p class="text-xs text-gray-400">Android / Chrome対応版 v1.0</p>
+            <p class="text-xs text-gray-400">Android/Chrome最適化版 v2.0</p>
         </div>
     </div>
 
@@ -609,7 +611,7 @@
                     }
                     
                     // スキャンレート情報
-                    const scanRate = this.platform.isAndroid ? 5 : 6;
+                    const scanRate = this.platform.isAndroid ? 8 : (this.platform.isChrome ? 10 : 6);
                     this.updateDebug('scanrate', `${scanRate}/sec`);
                     
                     // 検出方法
@@ -750,7 +752,7 @@
                         } else {
                             reject(new Error('ビデオ初期化タイムアウト'));
                         }
-                    }, 15000); // 15秒に延長
+                    }, 8000); // 8秒に短縮（Android向け）
 
                     const startPlayback = () => {
                         if (playbackStarted) {
@@ -773,8 +775,8 @@
                         const readyState = this.video.readyState;
                         this.updateDebug('ready', readyState);
 
-                        // readyState 3以上 AND videoWidth/Heightが存在することを確認
-                        if (readyState >= 3 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+                        // readyState 2以上 AND videoWidth/Heightが存在することを確認（緩和）
+                        if (readyState >= 2 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
                             console.log('[Video] Ready:', {
                                 readyState,
                                 size: `${this.video.videoWidth}x${this.video.videoHeight}`
@@ -799,17 +801,17 @@
             async waitForFirstFrame() {
                 return new Promise((resolve) => {
                     let attempts = 0;
-                    const maxAttempts = 50; // 5秒間試行に延長
+                    const maxAttempts = 30; // 3秒間試行（Android向けに短縮）
 
                     const checkFrame = () => {
                         attempts++;
                         
-                        // videoWidth/Heightが有効で、readyStateが4（完全準備完了）
-                        if (this.video.readyState === 4 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+                        // videoWidth/Heightが有効で、readyStateが2以上（緩和）
+                        if (this.video.readyState >= 2 && this.video.videoWidth > 0 && this.video.videoHeight > 0) {
                             console.log(`[Video] First frame ready after ${attempts * 100}ms`);
                             this.updateDebug('resolution', `${this.video.videoWidth}x${this.video.videoHeight}`);
-                            // さらに安定を待つ
-                            setTimeout(resolve, 500);
+                            // さらに安定を待つ（短縮）
+                            setTimeout(resolve, 300);
                         } else if (attempts >= maxAttempts) {
                             console.warn('[Video] First frame timeout, proceeding anyway');
                             resolve(); // タイムアウトしても続行
@@ -835,13 +837,13 @@
                 this.calibrationIndicator.classList.remove('hidden');
                 this.updateStatus(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
 
-                // キャリブレーション期間の延長（初回起動の安定性向上）
-                const calibrationDelay = this.calibrationAttempts === 1 ? 1500 : 800; // Android向けに短縮
+                // Android/Chrome向けに短縮: 初回600ms、以降400ms
+                const calibrationDelay = this.calibrationAttempts === 1 ? 600 : 400;
                 console.log(`[Calibration] Waiting ${calibrationDelay}ms for camera stabilization...`);
                 await new Promise(resolve => setTimeout(resolve, calibrationDelay));
 
-                // ビデオストリームが完全に安定しているか確認
-                const isFullyReady = this.video.readyState === 4 && 
+                // ビデオストリームが完全に安定しているか確認（緩和）
+                const isFullyReady = this.video.readyState >= 2 && 
                                     this.video.videoWidth > 0 && 
                                     this.video.videoHeight > 0 &&
                                     !this.video.paused;
@@ -852,13 +854,13 @@
                 if (isFullyReady) {
                     console.log(`[Calibration] ✅ Success on attempt ${this.calibrationAttempts} - Video: ${this.video.videoWidth}x${this.video.videoHeight}`);
                     this.updateDebug('resolution', `${this.video.videoWidth}x${this.video.videoHeight}`);
-                    // さらに少し待機してから検出開始（安定性向上）
-                    setTimeout(() => this.startQRDetection(), 500);
+                    // すぐに検出開始（待機時間を削減）
+                    setTimeout(() => this.startQRDetection(), 200);
                 } else {
                     // ビデオがまだ準備できていない場合は再キャリブレーション
                     console.warn(`[Calibration] ❌ Not ready (readyState: ${this.video.readyState}, size: ${this.video.videoWidth}x${this.video.videoHeight}, paused: ${this.video.paused})`);
                     if (this.calibrationAttempts < this.maxCalibrationAttempts) {
-                        setTimeout(() => this.calibrateCamera(), 1000);
+                        setTimeout(() => this.calibrateCamera(), 500);
                     } else {
                         // 最大試行回数に達した場合でもQR検出を開始
                         console.warn('[Calibration] ⚠️ Max attempts reached, starting detection anyway');
@@ -872,7 +874,8 @@
                 this.scanningAnimation.classList.remove('hidden');
                 this.updateDebug('detection', 'Starting');
 
-                const scanRate = this.platform.isAndroid ? 5 : (this.platform.isChrome ? 6 : 5);
+                // Android/Chrome最適化: より高速なスキャンレート
+                const scanRate = this.platform.isAndroid ? 8 : (this.platform.isChrome ? 10 : 6);
 
                 if (typeof QrScanner !== 'undefined') {
                     try {
@@ -956,11 +959,11 @@
                     const detector = new BarcodeDetector({ formats: ['qr_code'] });
                     
                     const detectQR = async () => {
-                        if (this.isScanning && this.video.readyState === 4) {
+                        if (this.isScanning && this.video.readyState >= 2) {
                             try {
                                 const currentTime = Date.now();
-                                // Android向け: 180ms間隔（約5.5回/秒）
-                                if (currentTime - this.lastDetectionAttempt > 180) {
+                                // Android/Chrome最適化: 120ms間隔（約8回/秒）
+                                if (currentTime - this.lastDetectionAttempt > 120) {
                                     const barcodes = await detector.detect(this.video);
                                     this.lastDetectionAttempt = currentTime;
                                     
@@ -991,7 +994,7 @@
                     this.detectionMethod = 'none';
                     this.updateDebug('method', 'None (Error)');
                     console.error('[QR] No detection method available');
-                    this.handleError(new Error('QRコード検出機能がサポートされていません。最新のブラウザをご利用ください。'));
+                    this.handleError(new Error('QRコード検出機能がサポートされていません。最新のChromeブラウザをご利用ください。'));
                 }
             }
 
