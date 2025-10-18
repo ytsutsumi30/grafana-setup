@@ -352,7 +352,7 @@
             this.stream = null;
             this.isScanning = false;
             this.qrScanner = null;
-            this.currentCamera = 'environment';
+            // カメラは背面固定 (environment)
             this.cameras = [];
             this.cameraIndex = 0;
             this.calibrationAttempts = 0;
@@ -544,6 +544,13 @@
                         </div>
                     </div>
                     
+                    <!-- カメラコントロールボタン -->
+                    <div style="position:absolute;top:20px;right:20px;z-index:20;display:flex;gap:10px;">
+                        <button id="btn-switch-camera" class="btn btn-secondary btn-sm" style="background:rgba(0,123,123,0.9);border:none;">
+                            <i class="fas fa-camera"></i> カメラ切替
+                        </button>
+                    </div>
+                    
                     <!-- ステータス表示 -->
                     <div class="qr-status-overlay" id="qr-camera-status">初期化中...</div>
                 </div>
@@ -554,11 +561,47 @@
             this.calibrationIndicator = document.getElementById('calibration-indicator');
             this.cameraStatus = document.getElementById('qr-camera-status');
             
+            // カメラ切り替えボタンのイベントリスナー
+            const btnSwitchCamera = document.getElementById('btn-switch-camera');
+            if (btnSwitchCamera) {
+                btnSwitchCamera.addEventListener('click', () => this.switchCamera());
+            }
+            
             // ボタンを停止に変更
             this.btnStartScan.innerHTML = '<i class="fas fa-stop me-2"></i>スキャン停止';
             this.btnStartScan.classList.remove('btn-primary');
             this.btnStartScan.classList.add('btn-danger');
             this.btnStartScan.onclick = () => this.stopScan();
+        }
+        
+        // カメラ切り替え機能
+        async switchCamera() {
+            if (this.cameras.length <= 1) {
+                this.showStatus('切り替え可能なカメラがありません', 'info');
+                return;
+            }
+            
+            this.showStatus('カメラを切り替えています...', 'info');
+            
+            // 次のカメラへ
+            this.cameraIndex = (this.cameraIndex + 1) % this.cameras.length;
+            
+            // スキャンを停止して再開
+            const wasScanning = this.isScanning;
+            this.cleanupResources();
+            
+            if (wasScanning) {
+                // 切り替え後に再スタート
+                setTimeout(async () => {
+                    try {
+                        await this.initializeCamera();
+                        this.showStatus(`カメラ ${this.cameraIndex + 1}/${this.cameras.length} に切り替えました`, 'success');
+                    } catch (error) {
+                        this.showStatus('カメラ切り替えエラー', 'error');
+                        console.error('Camera switch error:', error);
+                    }
+                }, 500);
+            }
         }
         
         // safari.html統合: カメラ初期化
@@ -578,13 +621,13 @@
             } else {
                 constraints = {
                     video: {
-                        facingMode: this.currentCamera,
+                        facingMode: 'environment',  // 背面カメラ優先
                         width: { ideal: 1280, max: 1920 },
                         height: { ideal: 720, max: 1080 },
                         frameRate: { ideal: 30, max: 30 }
                     }
                 };
-                console.log(`[Camera] Using facingMode: ${this.currentCamera}`);
+                console.log('[Camera] Using facingMode: environment');
             }
 
             try {
