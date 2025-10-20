@@ -27,9 +27,10 @@ const pool = new Pool({
     database: process.env.DB_NAME || 'production_db',
     user: process.env.DB_USER || 'production_user',
     password: process.env.DB_PASSWORD || 'production_pass',
-    ssl: {
+    // SSL設定: 環境変数で制御（ローカルPostgreSQLではSSL無効）
+    ssl: process.env.DB_SSL === 'true' ? {
         rejectUnauthorized: false // RDS自己署名証明書対応
-    }
+    } : false
 });
 
 // Express アプリケーション設定
