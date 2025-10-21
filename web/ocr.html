@@ -213,6 +213,18 @@
                             <label class="text-sm font-medium text-gray-700 mb-1 block">抽出された金額</label>
                             <input type="text" id="extracted-amount" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="自動抽出">
                         </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm font-medium text-gray-700 mb-1 block">📍 住所</label>
+                            <input type="text" id="extracted-address" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="自動抽出">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-700 mb-1 block">📮 送り先</label>
+                            <input type="text" id="extracted-destination" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="自動抽出">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-700 mb-1 block">📦 品目</label>
+                            <input type="text" id="extracted-items" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="自動抽出">
+                        </div>
                     </div>
                     
                     <div class="flex gap-3">
@@ -429,10 +441,13 @@
             // 生テキスト表示
             document.getElementById('ocr-raw-text').textContent = text;
             
-            // 伝票番号と金額を抽出
+            // 伝票データを抽出
             const extracted = extractDocumentData(text);
             document.getElementById('extracted-doc-number').value = extracted.documentNumber || '';
             document.getElementById('extracted-amount').value = extracted.amount || '';
+            document.getElementById('extracted-address').value = extracted.address || '';
+            document.getElementById('extracted-destination').value = extracted.destination || '';
+            document.getElementById('extracted-items').value = extracted.items || '';
             
             // 一時データとして保存
             window.currentOCRData = {
@@ -441,16 +456,22 @@
                 imageData: imageData,
                 documentNumber: extracted.documentNumber,
                 amount: extracted.amount,
+                address: extracted.address,
+                destination: extracted.destination,
+                items: extracted.items,
                 mode: currentMode,
                 timestamp: new Date().toISOString()
             };
         }
 
-        // 伝票データ抽出（簡易版）
+        // 伝票データ抽出（住所、送り先、品目対応版）
         function extractDocumentData(text) {
             const result = {
                 documentNumber: null,
-                amount: null
+                amount: null,
+                address: null,
+                destination: null,
+                items: null
             };
             
             // 伝票番号抽出（例: NO.123456, 注文番号:123456, など）
@@ -482,6 +503,50 @@
                 }
             }
             
+            // 住所抽出（例: 東京都, 〒123-4567, 市区町村を含む）
+            const addressPatterns = [
+                /(?:住所[:：]?|所在地[:：]?)\s*([^\n]+)/,
+                /(〒\d{3}-?\d{4}[^\n]+)/,
+                /((?:東京都|北海道|(?:京都|大阪)府|.{2,3}県).+?[市区町村][^\n]{5,30})/
+            ];
+            
+            for (const pattern of addressPatterns) {
+                const match = text.match(pattern);
+                if (match && match[1]) {
+                    result.address = match[1].trim();
+                    break;
+                }
+            }
+            
+            // 送り先抽出（例: 御中, 様, 宛）
+            const destinationPatterns = [
+                /(?:送り先[:：]?|届け先[:：]?|納品先[:：]?)\s*([^\n]+)/,
+                /([^\n]{2,20}(?:御中|様|宛|殿))/,
+                /(?:株式会社|有限会社)([^\n]{2,30})/
+            ];
+            
+            for (const pattern of destinationPatterns) {
+                const match = text.match(pattern);
+                if (match && match[1]) {
+                    result.destination = match[1].trim();
+                    break;
+                }
+            }
+            
+            // 品目抽出（例: 品名:, 商品:, 品目:）
+            const itemsPatterns = [
+                /(?:品名[:：]?|商品名[:：]?|品目[:：]?|内容[:：]?)\s*([^\n]+)/,
+                /(?:商品|製品|品)\s*[:：]\s*([^\n]+)/
+            ];
+            
+            for (const pattern of itemsPatterns) {
+                const match = text.match(pattern);
+                if (match && match[1]) {
+                    result.items = match[1].trim();
+                    break;
+                }
+            }
+            
             return result;
         }
 
@@ -495,20 +560,27 @@
             // 手動修正された値を取得
             const documentNumber = document.getElementById('extracted-doc-number').value;
             const amount = document.getElementById('extracted-amount').value;
+            const address = document.getElementById('extracted-address').value;
+            const destination = document.getElementById('extracted-destination').value;
+            const items = document.getElementById('extracted-items').value;
             
             if (!documentNumber) {
                 alert('伝票番号を入力してください');
                 return;
             }
             
-            const document = {
-                ...window.currentOCRData,
+            const docData = {
+                id: Date.now(),
+                type: currentMode,
                 documentNumber: documentNumber,
                 amount: amount,
-                id: Date.now()
-            };
-            
-            // モードに応じて保存
+                address: address,
+                destination: destination,
+                items: items,
+                rawText: window.currentOCRData.text,
+                confidence: window.currentOCRData.confidence,
+                timestamp: new Date().toISOString()
+            };            // モードに応じて保存
             if (currentMode === 'order') {
                 savedDocuments.orders.push(document);
             } else {
@@ -556,6 +628,9 @@
                             </div>
                             <div class="text-sm text-gray-600 space-y-1">
                                 <div>💰 金額: ${doc.amount ? '¥' + parseInt(doc.amount).toLocaleString() : '未設定'}</div>
+                                ${doc.address ? `<div>📍 住所: ${doc.address}</div>` : ''}
+                                ${doc.destination ? `<div>📮 送り先: ${doc.destination}</div>` : ''}
+                                ${doc.items ? `<div>📦 品目: ${doc.items}</div>` : ''}
                                 <div>🕐 ${new Date(doc.timestamp).toLocaleString('ja-JP')}</div>
                                 <div>📊 認識精度: ${Math.round(doc.confidence)}%</div>
                             </div>
@@ -583,20 +658,50 @@
             // 各注文に対して納品書をマッチング
             savedDocuments.orders.forEach(order => {
                 const matchedDeliveries = savedDocuments.deliveries.filter(delivery => {
-                    // 伝票番号完全一致
-                    if (delivery.documentNumber === order.documentNumber) return true;
+                    let matchScore = 0;
+                    
+                    // 伝票番号完全一致（高優先度）
+                    if (delivery.documentNumber === order.documentNumber) matchScore += 10;
                     
                     // 伝票番号部分一致（最初の4文字など）
                     if (delivery.documentNumber && order.documentNumber) {
                         const cleanOrder = order.documentNumber.replace(/[^A-Z0-9]/gi, '');
                         const cleanDelivery = delivery.documentNumber.replace(/[^A-Z0-9]/gi, '');
-                        if (cleanOrder.substring(0, 4) === cleanDelivery.substring(0, 4)) return true;
+                        if (cleanOrder.substring(0, 4) === cleanDelivery.substring(0, 4)) matchScore += 5;
+                    }
+                    
+                    // 住所マッチング（新規）
+                    if (delivery.address && order.address) {
+                        const cleanDeliveryAddr = delivery.address.replace(/\s/g, '');
+                        const cleanOrderAddr = order.address.replace(/\s/g, '');
+                        if (cleanDeliveryAddr.includes(cleanOrderAddr) || cleanOrderAddr.includes(cleanDeliveryAddr)) {
+                            matchScore += 8;
+                        }
+                    }
+                    
+                    // 送り先マッチング（新規）
+                    if (delivery.destination && order.destination) {
+                        const cleanDeliveryDest = delivery.destination.replace(/\s/g, '');
+                        const cleanOrderDest = order.destination.replace(/\s/g, '');
+                        if (cleanDeliveryDest.includes(cleanOrderDest) || cleanOrderDest.includes(cleanDeliveryDest)) {
+                            matchScore += 8;
+                        }
+                    }
+                    
+                    // 品目マッチング（新規）
+                    if (delivery.items && order.items) {
+                        const cleanDeliveryItems = delivery.items.replace(/\s/g, '');
+                        const cleanOrderItems = order.items.replace(/\s/g, '');
+                        if (cleanDeliveryItems.includes(cleanOrderItems) || cleanOrderItems.includes(cleanDeliveryItems)) {
+                            matchScore += 7;
+                        }
                     }
                     
                     // 金額一致
-                    if (delivery.amount && order.amount && delivery.amount === order.amount) return true;
+                    if (delivery.amount && order.amount && delivery.amount === order.amount) matchScore += 5;
                     
-                    return false;
+                    // スコアが5以上ならマッチと判定
+                    return matchScore >= 5;
                 });
                 
                 const matchStatus = matchedDeliveries.length > 0 ? 
@@ -630,28 +735,41 @@
                         </div>
                         
                         <div class="space-y-2 text-sm">
-                            <div class="flex items-center gap-2">
-                                <span class="text-gray-600">📝 注文:</span>
-                                <span class="font-medium">¥${match.order.amount ? parseInt(match.order.amount).toLocaleString() : '-'}</span>
+                            <div class="bg-blue-50 p-2 rounded">
+                                <div class="font-semibold text-blue-900 mb-1">📝 注文伝票</div>
+                                ${match.order.address ? `<div class="text-gray-700">📍 ${match.order.address}</div>` : ''}
+                                ${match.order.destination ? `<div class="text-gray-700">� ${match.order.destination}</div>` : ''}
+                                ${match.order.items ? `<div class="text-gray-700">📦 ${match.order.items}</div>` : ''}
+                                <div class="text-gray-700">💰 ¥${match.order.amount ? parseInt(match.order.amount).toLocaleString() : '-'}</div>
                             </div>
                             
-                            ${match.deliveries.length > 0 ? `
-                                <div class="flex items-center gap-2">
-                                    <span class="text-gray-600">📦 納品:</span>
-                                    <span class="font-medium">
-                                        ${match.deliveries.map(d => 
-                                            `${d.documentNumber} (¥${d.amount ? parseInt(d.amount).toLocaleString() : '-'})`
-                                        ).join(', ')}
-                                    </span>
+                            ${match.deliveries.length > 0 ? match.deliveries.map(d => `
+                                <div class="bg-green-50 p-2 rounded">
+                                    <div class="font-semibold text-green-900 mb-1">📦 納品書 (${d.documentNumber})</div>
+                                    ${d.address ? `<div class="text-gray-700">📍 ${d.address}</div>` : ''}
+                                    ${d.destination ? `<div class="text-gray-700">📮 ${d.destination}</div>` : ''}
+                                    ${d.items ? `<div class="text-gray-700">📦 ${d.items}</div>` : ''}
+                                    <div class="text-gray-700">💰 ¥${d.amount ? parseInt(d.amount).toLocaleString() : '-'}</div>
                                 </div>
-                            ` : '<div class="text-red-600">⚠️ 対応する納品書が見つかりません</div>'}
+                            `).join('') : '<div class="text-red-600 p-2 bg-red-50 rounded">⚠️ 対応する納品書が見つかりません</div>'}
                             
-                            ${match.status === 'matched' && match.deliveries[0].amount && match.order.amount ? 
-                                (match.deliveries[0].amount === match.order.amount ? 
-                                    '<div class="text-green-600 font-medium">💰 金額一致</div>' : 
-                                    '<div class="text-orange-600 font-medium">⚠️ 金額不一致</div>'
-                                ) : ''
-                            }
+                            ${match.status === 'matched' && match.deliveries.length > 0 ? `
+                                <div class="pt-2 border-t">
+                                    <div class="font-semibold text-gray-700 mb-1">マッチング詳細:</div>
+                                    ${match.deliveries[0].address && match.order.address && 
+                                      (match.deliveries[0].address.includes(match.order.address) || match.order.address.includes(match.deliveries[0].address)) ? 
+                                        '<div class="text-green-600">✓ 住所一致</div>' : ''}
+                                    ${match.deliveries[0].destination && match.order.destination && 
+                                      (match.deliveries[0].destination.includes(match.order.destination) || match.order.destination.includes(match.deliveries[0].destination)) ? 
+                                        '<div class="text-green-600">✓ 送り先一致</div>' : ''}
+                                    ${match.deliveries[0].items && match.order.items && 
+                                      (match.deliveries[0].items.includes(match.order.items) || match.order.items.includes(match.deliveries[0].items)) ? 
+                                        '<div class="text-green-600">✓ 品目一致</div>' : ''}
+                                    ${match.deliveries[0].amount && match.order.amount && match.deliveries[0].amount === match.order.amount ? 
+                                        '<div class="text-green-600">✓ 金額一致</div>' : 
+                                        (match.deliveries[0].amount && match.order.amount ? '<div class="text-orange-600">⚠️ 金額不一致</div>' : '')}
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
                 `;
