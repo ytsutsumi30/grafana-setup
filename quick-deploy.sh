@@ -157,6 +157,7 @@ rsync -avz --delete \
     --exclude='terraform' \
     --exclude='github-pages' \
     --exclude='ssl/server.key' \
+    --exclude='ssl/server.crt' \
     --exclude='.env' \
     --exclude='*.log' \
     --exclude='.DS_Store' \
@@ -174,6 +175,7 @@ rsync -avz --delete \
     --exclude='terraform' \
     --exclude='github-pages' \
     --exclude='ssl/server.key' \
+    --exclude='ssl/server.crt' \
     --exclude='.env' \
     --exclude='*.log' \
     --exclude='.DS_Store' \
