@@ -28,3 +28,4 @@ terraform/.terraform.lock.hcl
 .vscode/
 .idea/
 
+api/.env

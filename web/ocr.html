@@ -143,6 +143,7 @@
                             <label class="text-sm font-medium text-gray-700 mb-2 block">OCRエンジン選択</label>
                             <select id="ocr-engine-select" onchange="updateOCREngine()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                 <option value="tesseract-enhanced">Tesseract.js 高精度版（無料・オフライン）</option>
+                                <option value="textract">AWS Textract ⭐ 推奨（表・フォーム認識）</option>
                                 <option value="google-vision">Google Cloud Vision API（高精度・要APIキー）</option>
                                 <option value="azure-vision">Azure Computer Vision（高精度・要APIキー）</option>
                             </select>
@@ -357,6 +358,10 @@
                 apiKeySection.classList.add('hidden');
                 infoDiv.innerHTML = '<strong>Tesseract.js 高精度版:</strong> 画像前処理＋デュアル言語モデル（日本語・英語）で精度を向上。完全無料でオフライン動作。';
                 infoDiv.className = 'p-3 bg-blue-50 rounded-lg text-sm text-blue-800';
+            } else if (ocrEngine === 'textract') {
+                apiKeySection.classList.add('hidden');
+                infoDiv.innerHTML = '<strong>⭐ AWS Textract:</strong> 表形式データ・フォーム認識に最適。日本語手書き文字対応。サーバー経由で処理（APIキー不要）。';
+                infoDiv.className = 'p-3 bg-orange-50 rounded-lg text-sm text-orange-800';
             } else if (ocrEngine === 'google-vision') {
                 apiKeySection.classList.remove('hidden');
                 infoDiv.innerHTML = '<strong>Google Cloud Vision API:</strong> 最高精度のAI-OCR。手書き文字も高精度で認識。<a href="https://cloud.google.com/vision/docs/ocr" target="_blank" class="underline">APIキー取得方法</a>';
@@ -462,7 +467,9 @@
             const imageData = canvas.toDataURL('image/jpeg', 0.9);
             
             // OCRエンジンに応じて処理を振り分け
-            if (ocrEngine === 'google-vision') {
+            if (ocrEngine === 'textract') {
+                await performTextractOCR(imageData);
+            } else if (ocrEngine === 'google-vision') {
                 await performGoogleVisionOCR(imageData);
             } else if (ocrEngine === 'azure-vision') {
                 await performAzureVisionOCR(imageData);
@@ -728,6 +735,73 @@
             } catch (error) {
                 console.error('Azure Vision OCR error:', error);
                 alert('Azure Vision OCRでエラーが発生しました: ' + error.message + '\n\n設定形式: エンドポイント|APIキー');
+            } finally {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        // AWS Textract OCR（サーバー経由）
+        async function performTextractOCR(imageData) {
+            const overlay = document.getElementById('processing-overlay');
+            overlay.classList.remove('hidden');
+            
+            try {
+                document.getElementById('processing-status').textContent = 'AWS Textractに接続中...';
+                document.getElementById('processing-progress').style.width = '30%';
+                document.getElementById('processing-percentage').textContent = '30%';
+                
+                // Base64画像データを準備
+                const base64Image = imageData.split(',')[1] || imageData;
+                
+                document.getElementById('processing-status').textContent = 'AI-OCR処理中（表・フォーム認識）...';
+                document.getElementById('processing-progress').style.width = '60%';
+                document.getElementById('processing-percentage').textContent = '60%';
+                
+                // サーバーのOCR APIエンドポイントを呼び出し
+                const response = await fetch('/api/ocr/textract', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image: imageData,
+                        documentType: currentMode === 'order' ? 'invoice' : 'receipt'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `API Error: ${response.status}`);
+                }
+                
+                document.getElementById('processing-progress').style.width = '90%';
+                document.getElementById('processing-percentage').textContent = '90%';
+                
+                const result = await response.json();
+                
+                document.getElementById('processing-progress').style.width = '100%';
+                document.getElementById('processing-percentage').textContent = '100%';
+                
+                if (!result.success) {
+                    throw new Error(result.error || 'Textract処理に失敗しました');
+                }
+                
+                console.log('AWS Textract OCR Result:', result);
+                
+                // 警告がある場合は表示
+                if (result.warning) {
+                    console.warn('Textract Warning:', result.warning);
+                }
+                
+                // 結果を表示
+                displayOCRResult(result.text, result.confidence, imageData);
+                
+                // 処理時間をログ出力
+                console.log(`Textract処理時間: ${result.processingTime}ms, 信頼度: ${result.confidence.toFixed(2)}%`);
+                
+            } catch (error) {
+                console.error('AWS Textract OCR error:', error);
+                alert('AWS Textract OCRでエラーが発生しました: ' + error.message + '\n\nサーバー側のAWS認証情報を確認してください。');
             } finally {
                 overlay.classList.add('hidden');
             }

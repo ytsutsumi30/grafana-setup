@@ -5,6 +5,10 @@ const rateLimit = require('express-rate-limit');
 const winston = require('winston');
 const { Pool } = require('pg');
 const Joi = require('joi');
+require('dotenv').config();
+
+// OCRルートのインポート
+const ocrRoutes = require('./routes/ocr');
 
 // ログ設定
 const logger = winston.createLogger({
@@ -74,6 +78,9 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
+
+// === OCR API（AWS Textract） ===
+app.use('/api/ocr', ocrRoutes);
 
 // データベース接続テスト
 app.get('/db-test', async (req, res) => {
