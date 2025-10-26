@@ -12,6 +12,11 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./web:/usr/share/nginx/html
       - ./ssl:/etc/nginx/ssl
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       - production-api
     networks:
@@ -32,6 +37,11 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - production-network
 
@@ -54,6 +64,11 @@ services:
       - ./api/.env
     volumes:
       - ./api:/app
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     command: sh -c "npm install && npm start"
     depends_on:
       - postgres
