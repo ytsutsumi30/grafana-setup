@@ -50,6 +50,8 @@ services:
       - DB_NAME=production_db
       - DB_USER=production_user
       - DB_PASSWORD=production_pass
+    env_file:
+      - ./api/.env
     volumes:
       - ./api:/app
     command: sh -c "npm install && npm start"
