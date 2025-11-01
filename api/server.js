@@ -80,7 +80,7 @@ app.get('/health', (req, res) => {
 });
 
 // === OCR API（AWS Textract） ===
-app.use('/api/ocr', ocrRoutes);
+app.use('/ocr', ocrRoutes);
 
 // データベース接続テスト
 app.get('/db-test', async (req, res) => {
