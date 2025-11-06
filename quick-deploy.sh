@@ -13,10 +13,10 @@ set -e
 # ========================================
 # 設定
 # ========================================
-EC2_IP="57.180.82.161"
+EC2_IP="52.69.217.246"
 KEY_PATH="$HOME/.ssh/production-management-key.pem"
 PROJECT_DIR="$HOME/grafana-setup"
-REMOTE_PRIMARY_DIR="/var/www/html"
+REMOTE_PRIMARY_DIR="/opt/production-management"
 REMOTE_SECONDARY_DIR="production-management"
 
 # 色付き出力
@@ -107,8 +107,8 @@ show_header
 # 再起動のみの場合
 if [ "$RESTART_ONLY" = true ]; then
     log_info "サービスを再起動しています..."
-    ssh -i "$KEY_PATH" ec2-user@$EC2_IP \
-        "cd $REMOTE_PRIMARY_DIR && sudo docker-compose restart"
+    ssh -i "$KEY_PATH" ubuntu@$EC2_IP \
+        "cd $REMOTE_PRIMARY_DIR && docker-compose restart"
     log_success "サービス再起動完了"
     
     # ヘルスチェック
@@ -137,7 +137,7 @@ if [ ! -d "$PROJECT_DIR" ]; then
 fi
 
 # SSH接続確認
-if ! ssh -i "$KEY_PATH" -o ConnectTimeout=5 ec2-user@$EC2_IP "echo ok" > /dev/null 2>&1; then
+if ! ssh -i "$KEY_PATH" -o ConnectTimeout=5 ubuntu@$EC2_IP "echo ok" > /dev/null 2>&1; then
     log_error "EC2への接続に失敗しました"
     exit 1
 fi
@@ -166,7 +166,7 @@ rsync -avz --delete \
     --progress \
     -e "ssh -i $KEY_PATH" \
     "$PROJECT_DIR/" \
-    ec2-user@$EC2_IP:"$REMOTE_PRIMARY_DIR"/ | tee "$RSYNC_LOG"
+    ubuntu@$EC2_IP:"$REMOTE_PRIMARY_DIR"/ | tee "$RSYNC_LOG"
 
 # 旧ディレクトリ用の同期（ドキュメント用途）
 rsync -avz --delete \
@@ -183,7 +183,7 @@ rsync -avz --delete \
     --exclude='*.pyc' \
     -e "ssh -i $KEY_PATH" \
     "$PROJECT_DIR/" \
-    ec2-user@$EC2_IP:~/$REMOTE_SECONDARY_DIR/ >/dev/null 2>&1 || true
+    ubuntu@$EC2_IP:~/$REMOTE_SECONDARY_DIR/ >/dev/null 2>&1 || true
 
 if grep -qE '^(>f|<f|c|\*)' "$RSYNC_LOG"; then
     log_info "同期されたファイル一覧"
@@ -199,8 +199,8 @@ log_success "ファイル同期完了"
 # 3. 依存関係のインストール（フルデプロイの場合）
 if [ "$FULL_DEPLOY" = true ]; then
     log_info "API依存関係をインストールしています..."
-    ssh -i "$KEY_PATH" ec2-user@$EC2_IP << 'EOF'
-cd /var/www/html/api
+    ssh -i "$KEY_PATH" ubuntu@$EC2_IP << 'EOF'
+cd /opt/production-management/api
 npm install --production 2>&1 | tail -5
 EOF
     log_success "依存関係インストール完了"
@@ -209,9 +209,9 @@ fi
 # 4. サービス再起動（no-restartオプションがない場合）
 if [ "$NO_RESTART" = false ]; then
     log_info "サービスを再起動しています..."
-    ssh -i "$KEY_PATH" ec2-user@$EC2_IP << 'EOF'
-cd /var/www/html
-sudo docker-compose restart
+    ssh -i "$KEY_PATH" ubuntu@$EC2_IP << 'EOF'
+cd /opt/production-management
+docker-compose restart
 EOF
     log_success "サービス再起動完了"
     
@@ -245,10 +245,10 @@ echo "=========================================="
 echo ""
 echo "📱 アプリケーション: http://$EC2_IP"
 echo "🔐 HTTPS: https://$EC2_IP"
-echo "🔑 SSH: ssh -i $KEY_PATH ec2-user@$EC2_IP"
+echo "🔑 SSH: ssh -i $KEY_PATH ubuntu@$EC2_IP"
 echo ""
 
 # デプロイ時刻を記録
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-ssh -i "$KEY_PATH" ec2-user@$EC2_IP \
-    "echo '$TIMESTAMP - Deployed' >> /var/www/html/deploy.log"
+ssh -i "$KEY_PATH" ubuntu@$EC2_IP \
+    "echo '$TIMESTAMP - Deployed' >> /opt/production-management/deploy.log"
