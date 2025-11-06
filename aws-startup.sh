@@ -1,24 +1,56 @@
 #!/bin/bash
-# ========================================
-# AWS Production Management System - Startup Script
-# AWS上で生産管理システムを稼働開始するための統合スクリプト
-# ========================================
+#==============================================================================
+# AWS 生産管理システム - 統合起動スクリプト
+# Production Management System - AWS Unified Startup Script
+#==============================================================================
+# 
+# このスクリプトは、AWS上で生産管理システムを稼働開始するための
+# 包括的な機能を提供します。
+#
+# 主な機能:
+#   - AWS インフラストラクチャの自動構築 (Terraform)
+#   - EC2インスタンスへのアプリケーションデプロイ
+#   - RDS PostgreSQL データベースの初期化
+#   - SSL証明書の自動生成と設定
+#   - システムの起動と停止
+#   - ログ監視とヘルスチェック
+#
+# 使用方法:
+#   ./aws-startup.sh deploy           # 新規デプロイ（インフラ構築+アプリ起動）
+#   ./aws-startup.sh start            # システム起動（EC2+RDS）
+#   ./aws-startup.sh stop             # システム停止
+#   ./aws-startup.sh restart          # システム再起動
+#   ./aws-startup.sh status           # ステータス確認
+#   ./aws-startup.sh logs             # ログ表示
+#   ./aws-startup.sh ssh              # SSH接続
+#   ./aws-startup.sh destroy          # 全削除
+#   ./aws-startup.sh health           # ヘルスチェック
+#   ./aws-startup.sh backup           # データベースバックアップ
+#
+#==============================================================================
 
 set -e
 
+# ========================================
+# 設定変数
+# ========================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 TERRAFORM_DIR="$SCRIPT_DIR/terraform"
+BACKUP_DIR="$SCRIPT_DIR/backups"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# カラー定義
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly CYAN='\033[0;36m'
+readonly MAGENTA='\033[0;35m'
+readonly NC='\033[0m' # No Color
 
-# Functions
+# ========================================
+# ロギング関数
+# ========================================
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -35,7 +67,7 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-log_step() {
+log_header() {
     echo ""
     echo -e "${CYAN}========================================${NC}"
     echo -e "${CYAN}$1${NC}"
@@ -43,270 +75,173 @@ log_step() {
 }
 
 # ========================================
-# Usage
-# ========================================
-usage() {
-    cat << EOF
-Usage: $0 [COMMAND] [OPTIONS]
-
-AWS生産管理システム稼働開始スクリプト
-
-COMMANDS:
-    check           前提条件のチェック
-    setup           初回セットアップ（Terraform初期化）
-    deploy          インフラのデプロイ
-    start           アプリケーションの起動
-    full            フルデプロイ（setup + deploy + start）
-    status          システム状態の確認
-    stop            システムの停止
-    restart         システムの再起動
-    logs            ログの表示
-    ssh             EC2にSSH接続
-    destroy         全リソースの削除
-    help            このヘルプを表示
-
-OPTIONS:
-    --skip-confirm  確認プロンプトをスキップ
-    --monitoring    監視システムも起動
-
-EXAMPLES:
-    # 初回デプロイ
-    $0 full
-
-    # システム起動のみ
-    $0 start
-
-    # 監視システムも含めて起動
-    $0 start --monitoring
-
-    # システム停止
-    $0 stop
-
-    # ステータス確認
-    $0 status
-
-    # EC2にSSH接続
-    $0 ssh
-
-    # 全削除
-    $0 destroy
-
-EOF
-}
-
-# ========================================
-# Parse Arguments
-# ========================================
-COMMAND="${1:-help}"
-SKIP_CONFIRM=false
-WITH_MONITORING=false
-
-shift || true
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --skip-confirm)
-            SKIP_CONFIRM=true
-            shift
-            ;;
-        --monitoring)
-            WITH_MONITORING=true
-            shift
-            ;;
-        *)
-            log_error "Unknown option: $1"
-            usage
-            exit 1
-            ;;
-    esac
-done
-
-# ========================================
-# Check Prerequisites
+# 前提条件チェック
 # ========================================
 check_prerequisites() {
-    log_step "前提条件のチェック"
-
-    local all_ok=true
-
-    # Check Terraform
-    if command -v terraform &> /dev/null; then
-        local tf_version=$(terraform version -json | grep -o '"terraform_version":"[^"]*' | cut -d'"' -f4)
-        log_success "Terraform: インストール済み (v${tf_version})"
-    else
-        log_error "Terraform: インストールされていません"
-        echo "  インストール方法: https://www.terraform.io/downloads"
-        all_ok=false
-    fi
-
-    # Check AWS CLI
-    if command -v aws &> /dev/null; then
-        local aws_version=$(aws --version | awk '{print $1}')
-        log_success "AWS CLI: インストール済み (${aws_version})"
-        
-        # Check AWS credentials
-        if aws sts get-caller-identity &> /dev/null; then
-            local aws_account=$(aws sts get-caller-identity --query Account --output text)
-            local aws_region=$(aws configure get region || echo "未設定")
-            log_success "AWS認証: 設定済み (Account: ${aws_account}, Region: ${aws_region})"
-        else
-            log_error "AWS認証: 設定されていません"
-            echo "  設定方法: aws configure"
-            all_ok=false
-        fi
-    else
-        log_error "AWS CLI: インストールされていません"
-        echo "  インストール方法: https://aws.amazon.com/cli/"
-        all_ok=false
-    fi
-
-    # Check Docker (optional, for local testing)
-    if command -v docker &> /dev/null; then
-        log_success "Docker: インストール済み"
-    else
-        log_warning "Docker: インストールされていません（AWS環境では不要）"
-    fi
-
-    # Check SSH key
-    if [ -f "$TERRAFORM_DIR/terraform.tfvars" ]; then
-        local key_name=$(grep '^key_name' "$TERRAFORM_DIR/terraform.tfvars" | awk -F'"' '{print $2}')
-        if [ -n "$key_name" ] && [ -f "$HOME/.ssh/${key_name}.pem" ]; then
-            log_success "SSH Key: 設定済み ($key_name)"
-        else
-            log_warning "SSH Key: 設定を確認してください"
-        fi
-    fi
-
-    echo ""
-    if [ "$all_ok" = true ]; then
-        log_success "✅ すべての前提条件を満たしています"
-        return 0
-    else
-        log_error "❌ 前提条件が不足しています"
-        return 1
-    fi
-}
-
-# ========================================
-# Setup Terraform
-# ========================================
-setup_terraform() {
-    log_step "Terraform初期セットアップ"
-
-    cd "$TERRAFORM_DIR"
-
-    # Check if terraform.tfvars exists
-    if [ ! -f "terraform.tfvars" ]; then
-        log_warning "terraform.tfvarsが見つかりません。サンプルから作成します..."
-        cp terraform.tfvars.example terraform.tfvars
-        
-        echo ""
-        log_warning "⚠️  terraform.tfvarsを編集してください："
-        echo "  1. key_name: AWS SSH Key Pair名"
-        echo "  2. db_password: データベースパスワード（強力なもの）"
-        echo "  3. allowed_cidr_blocks: アクセス元IPアドレス制限"
-        echo ""
-        echo "編集コマンド: vim $TERRAFORM_DIR/terraform.tfvars"
-        echo ""
-        
-        if [ "$SKIP_CONFIRM" = false ]; then
-            read -p "terraform.tfvarsを編集しましたか? (yes/no): " confirm
-            if [ "$confirm" != "yes" ]; then
-                log_info "terraform.tfvarsを編集後、再度このスクリプトを実行してください"
-                exit 0
-            fi
-        fi
-    else
-        log_success "terraform.tfvars: 設定済み"
-    fi
-
-    # Initialize Terraform
-    log_info "Terraformを初期化しています..."
-    terraform init
+    log_header "前提条件チェック"
     
-    log_success "✅ Terraform初期化完了"
+    local missing_deps=()
+    
+    # Terraform チェック
+    if ! command -v terraform &> /dev/null; then
+        missing_deps+=("terraform")
+    else
+        log_success "✓ Terraform: $(terraform version | head -n1)"
+    fi
+    
+    # AWS CLI チェック
+    if ! command -v aws &> /dev/null; then
+        missing_deps+=("aws-cli")
+    else
+        log_success "✓ AWS CLI: $(aws --version 2>&1 | head -n1)"
+    fi
+    
+    # Docker チェック（ローカル開発用）
+    if command -v docker &> /dev/null; then
+        log_success "✓ Docker: $(docker --version)"
+    else
+        log_warning "⚠ Docker not found (only required for local development)"
+    fi
+    
+    # 欠損している依存関係のチェック
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        log_error "Missing required dependencies: ${missing_deps[*]}"
+        echo ""
+        echo "Please install:"
+        for dep in "${missing_deps[@]}"; do
+            echo "  - $dep"
+        done
+        exit 1
+    fi
+    
+    # AWS認証情報チェック
+    if ! aws sts get-caller-identity &> /dev/null; then
+        log_error "AWS credentials are not configured"
+        echo ""
+        echo "Please run: aws configure"
+        echo "  AWS Access Key ID: YOUR_ACCESS_KEY"
+        echo "  AWS Secret Access Key: YOUR_SECRET_KEY"
+        echo "  Default region: ap-northeast-1"
+        echo "  Default output format: json"
+        exit 1
+    fi
+    
+    local aws_account=$(aws sts get-caller-identity --query Account --output text)
+    local aws_region=$(aws configure get region || echo "us-east-1")
+    log_success "✓ AWS Account: $aws_account"
+    log_success "✓ AWS Region: $aws_region"
+    
+    log_success "All prerequisites met"
 }
 
 # ========================================
-# Deploy Infrastructure
+# Terraform出力取得ヘルパー
+# ========================================
+get_terraform_output() {
+    local key=$1
+    cd "$TERRAFORM_DIR"
+    terraform output -raw "$key" 2>/dev/null || echo ""
+}
+
+get_ec2_ip() {
+    get_terraform_output "ec2_public_ip"
+}
+
+get_ssh_key_path() {
+    local key_name=$(get_terraform_output "ssh_command" | grep -oP '(?<=-i ~/\.ssh/)[^ ]+' || echo "")
+    if [ -n "$key_name" ]; then
+        echo "$HOME/.ssh/$key_name"
+    else
+        echo ""
+    fi
+}
+
+# ========================================
+# Terraformインフラ構築
 # ========================================
 deploy_infrastructure() {
-    log_step "AWSインフラストラクチャのデプロイ"
-
+    log_header "インフラストラクチャのデプロイ"
+    
     cd "$TERRAFORM_DIR"
-
-    # Validate configuration
-    log_info "Terraform設定を検証しています..."
-    terraform validate
     
-    # Plan
-    log_info "デプロイプランを作成しています..."
-    terraform plan -out=tfplan
-    
-    echo ""
-    log_info "📋 デプロイ内容を確認してください"
-    
-    if [ "$SKIP_CONFIRM" = false ]; then
-        read -p "このプランを適用しますか? (yes/no): " confirm
-        if [ "$confirm" != "yes" ]; then
-            log_warning "デプロイをキャンセルしました"
-            rm -f tfplan
+    # terraform.tfvars の確認
+    if [ ! -f "terraform.tfvars" ]; then
+        log_warning "terraform.tfvars が見つかりません"
+        if [ -f "terraform.tfvars.example" ]; then
+            log_info "terraform.tfvars.example からコピーしています..."
+            cp terraform.tfvars.example terraform.tfvars
+            log_warning "terraform.tfvars を編集してから再度実行してください"
+            echo ""
+            echo "必須項目:"
+            echo "  - key_name: AWS EC2 Key Pair名"
+            echo "  - db_password: データベースパスワード"
+            echo "  - allowed_cidr_blocks: アクセス許可するIPアドレス"
             exit 0
+        else
+            log_error "terraform.tfvars.example が見つかりません"
+            exit 1
         fi
     fi
     
-    # Apply
-    log_info "インフラストラクチャをデプロイしています..."
-    log_warning "⏳ 完了まで約10-15分かかります..."
+    # Terraform初期化
+    log_info "Terraform を初期化しています..."
+    terraform init
     
+    # プラン作成
+    log_info "実行プランを作成しています..."
+    terraform plan -out=tfplan
+    
+    # 確認
+    echo ""
+    read -p "このプランを適用しますか? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        log_warning "デプロイをキャンセルしました"
+        rm -f tfplan
+        exit 0
+    fi
+    
+    # 適用
+    log_info "インフラストラクチャを構築しています..."
     terraform apply tfplan
     rm -f tfplan
     
-    log_success "✅ インフラストラクチャのデプロイ完了"
+    log_success "インフラストラクチャのデプロイが完了しました"
 }
 
 # ========================================
-# Get EC2 Information
-# ========================================
-get_ec2_info() {
-    cd "$TERRAFORM_DIR"
-    
-    EC2_IP=$(terraform output -raw ec2_public_ip 2>/dev/null || echo "")
-    EC2_ID=$(terraform output -raw ec2_instance_id 2>/dev/null || echo "")
-    SSH_KEY=$(terraform output -raw ssh_command 2>/dev/null | grep -oP '(?<=-i ~/\.ssh/)[^ ]+' | sed 's/\.pem//' || echo "")
-    SSH_KEY_PATH="$HOME/.ssh/${SSH_KEY}.pem"
-    
-    if [ -z "$EC2_IP" ]; then
-        log_error "EC2情報を取得できません。まずデプロイを実行してください: $0 deploy"
-        exit 1
-    fi
-}
-
-# ========================================
-# Upload Application Files
+# アプリケーションファイルのアップロード
 # ========================================
 upload_application() {
-    log_step "アプリケーションファイルのアップロード"
+    log_header "アプリケーションのアップロード"
     
-    get_ec2_info
+    local ec2_ip=$(get_ec2_ip)
+    local key_path=$(get_ssh_key_path)
     
-    log_info "EC2 IP: $EC2_IP"
-    log_info "SSH Key: $SSH_KEY"
+    if [ -z "$ec2_ip" ]; then
+        log_error "EC2 IPアドレスが取得できません。先にインフラをデプロイしてください。"
+        exit 1
+    fi
     
-    # Wait for EC2 to be ready
-    log_info "EC2の起動を待機しています..."
-    sleep 30
+    if [ ! -f "$key_path" ]; then
+        log_error "SSH鍵が見つかりません: $key_path"
+        exit 1
+    fi
     
-    # Test SSH connection
-    log_info "SSH接続をテストしています..."
+    log_info "EC2 IP: $ec2_ip"
+    log_info "SSH鍵: $key_path"
+    
+    # SSH接続待機
+    log_info "EC2インスタンスの準備を待機しています..."
     local max_retries=20
     local retry=0
     while [ $retry -lt $max_retries ]; do
-        if ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ec2-user@$EC2_IP "echo 'SSH OK'" &> /dev/null; then
-            log_success "SSH接続確立"
+        if ssh -i "$key_path" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            ec2-user@$ec2_ip "echo 'SSH connection successful'" &> /dev/null; then
+            log_success "SSH接続が確立されました"
             break
         fi
         retry=$((retry + 1))
-        log_warning "再試行 $retry/$max_retries - SSH接続待機中..."
+        log_info "リトライ $retry/$max_retries - SSH接続を待機中..."
         sleep 10
     done
     
@@ -315,16 +250,14 @@ upload_application() {
         exit 1
     fi
     
-    # Create remote directory
+    # リモートディレクトリ作成
     log_info "リモートディレクトリを作成しています..."
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP \
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip \
         "sudo mkdir -p /opt/production-management && sudo chown ec2-user:ec2-user /opt/production-management"
     
-    # Upload application files
+    # ファイルアップロード
     log_info "アプリケーションファイルをアップロードしています..."
-    log_warning "⏳ ファイルサイズによっては数分かかります..."
-    
-    rsync -avz --progress -e "ssh -i $SSH_KEY_PATH -o StrictHostKeyChecking=no" \
+    rsync -avz -e "ssh -i $key_path -o StrictHostKeyChecking=no" \
         --exclude 'node_modules' \
         --exclude '.git' \
         --exclude 'terraform' \
@@ -334,35 +267,26 @@ upload_application() {
         --exclude '.env' \
         --exclude '*.tfstate*' \
         --exclude '.terraform' \
+        --exclude 'backups' \
         --exclude 'web-backup-*' \
         "$PROJECT_ROOT/" \
-        ec2-user@$EC2_IP:/opt/production-management/
+        ec2-user@$ec2_ip:/opt/production-management/
     
-    log_success "✅ アプリケーションファイルのアップロード完了"
-}
-
-# ========================================
-# Configure Application
-# ========================================
-configure_application() {
-    log_step "アプリケーション設定"
+    log_success "アプリケーションファイルのアップロードが完了しました"
     
-    get_ec2_info
-    
-    cd "$TERRAFORM_DIR"
-    local db_endpoint=$(terraform output -raw rds_endpoint 2>/dev/null || echo "")
+    # 環境変数ファイルの生成
+    log_info "環境変数ファイルを生成しています..."
+    local db_endpoint=$(get_terraform_output "rds_endpoint")
     local db_host=$(echo "$db_endpoint" | cut -d: -f1)
     
-    log_info "データベース設定を構成しています..."
-    
-    # Generate .env file
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP << EOF
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip bash << ENVEOF
 cd /opt/production-management
 
 # Create .env file for API
+mkdir -p api
 cat > api/.env << 'DOTENV'
 # Database Configuration (RDS)
-DB_HOST=${db_host}
+DB_HOST=$db_host
 DB_PORT=5432
 DB_NAME=production_db
 DB_USER=production_user
@@ -370,31 +294,48 @@ DB_PASSWORD=production_pass
 
 # Application Configuration
 NODE_ENV=production
-API_PORT=3000
+API_PORT=3001
 
-# Logging
-LOG_LEVEL=info
+# Monitoring
+GRAFANA_ADMIN_PASSWORD=admin123
+PROMETHEUS_RETENTION=15d
 DOTENV
 
 chmod 600 api/.env
-
-echo "✅ .env ファイル作成完了"
-EOF
+echo "✓ .env file created"
+ENVEOF
     
-    # Setup SSL certificate
+    log_success "環境変数ファイルの生成が完了しました"
+}
+
+# ========================================
+# SSL証明書のセットアップ
+# ========================================
+setup_ssl() {
+    log_header "SSL証明書のセットアップ"
+    
+    local ec2_ip=$(get_ec2_ip)
+    local key_path=$(get_ssh_key_path)
+    
+    if [ -z "$ec2_ip" ] || [ ! -f "$key_path" ]; then
+        log_error "EC2情報が取得できません"
+        exit 1
+    fi
+    
     log_info "SSL証明書を生成しています..."
     
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP << 'EOF'
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip bash << 'SSLEOF'
 cd /opt/production-management
 
-# Create ssl directory
+# SSL ディレクトリ作成
 mkdir -p ssl
 
-# Get EC2 public IP
+# EC2 パブリックIPを取得
 PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+echo "Public IP: $PUBLIC_IP"
 
-# Create OpenSSL configuration
-cat > ssl/openssl.cnf << SSLCONF
+# OpenSSL設定ファイル作成
+cat > ssl/openssl.cnf << CONFEOF
 [req]
 distinguished_name = req_distinguished_name
 x509_extensions = v3_req
@@ -415,467 +356,624 @@ subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = localhost
-DNS.2 = *.compute.amazonaws.com
+DNS.2 = *.local
+DNS.3 = *.compute.amazonaws.com
 IP.1 = 127.0.0.1
 IP.2 = $PUBLIC_IP
-SSLCONF
+CONFEOF
 
-# Generate self-signed certificate
+# 自己署名証明書生成
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout ssl/server.key \
     -out ssl/server.crt \
     -config ssl/openssl.cnf 2>/dev/null
 
+# パーミッション設定
 chmod 600 ssl/server.key
 chmod 644 ssl/server.crt
 
-echo "✅ SSL証明書生成完了: $PUBLIC_IP"
-EOF
+echo "✓ SSL certificate generated for $PUBLIC_IP"
+
+# Nginx設定にIPアドレスを反映
+if [ -f nginx/conf.d/default.conf ]; then
+    sed -i "s/server_name .*/server_name $PUBLIC_IP localhost;/g" nginx/conf.d/default.conf
+    echo "✓ Nginx configuration updated"
+fi
+SSLEOF
     
-    log_success "✅ アプリケーション設定完了"
+    log_success "SSL証明書のセットアップが完了しました"
 }
 
 # ========================================
-# Initialize Database
+# データベース初期化
 # ========================================
-initialize_database() {
-    log_step "データベース初期化"
+init_database() {
+    log_header "データベースの初期化"
     
-    get_ec2_info
+    local ec2_ip=$(get_ec2_ip)
+    local key_path=$(get_ssh_key_path)
     
-    log_info "データベーススキーマを初期化しています..."
-    log_warning "⏳ RDSの準備に数分かかる場合があります..."
+    if [ -z "$ec2_ip" ] || [ ! -f "$key_path" ]; then
+        log_error "EC2情報が取得できません"
+        exit 1
+    fi
     
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP << 'EOF'
+    log_info "データベースを初期化しています..."
+    
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip bash << 'DBEOF'
 cd /opt/production-management
 
-# Load environment variables
-export $(grep -v '^#' api/.env | xargs)
+# 環境変数読み込み
+if [ -f api/.env ]; then
+    export $(grep -v '^#' api/.env | xargs)
+else
+    echo "Error: api/.env not found"
+    exit 1
+fi
 
-# Wait for RDS to be available
-echo "⏳ RDS接続待機中..."
+# RDS の可用性を待機
+echo "Waiting for RDS to be available..."
 max_retries=30
 retry=0
 while [ $retry -lt $max_retries ]; do
     if docker run --rm -e PGPASSWORD=$DB_PASSWORD postgres:15-alpine \
         psql -h $DB_HOST -U $DB_USER -d postgres -c "SELECT 1" &> /dev/null; then
-        echo "✅ RDS接続成功"
+        echo "✓ RDS is available"
         break
     fi
     retry=$((retry + 1))
-    echo "再試行 $retry/$max_retries..."
+    echo "Retry $retry/$max_retries..."
     sleep 10
 done
 
 if [ $retry -eq $max_retries ]; then
-    echo "❌ RDS接続タイムアウト"
+    echo "Error: RDS connection timeout"
     exit 1
 fi
 
-# Initialize database schemas
-echo "📊 データベーススキーマを初期化しています..."
-
+# データベース初期化スクリプトの実行
 if [ -d postgres/init ]; then
+    echo "Running database initialization scripts..."
     for sql_file in postgres/init/*.sql; do
         if [ -f "$sql_file" ]; then
-            echo "実行中: $(basename $sql_file)"
+            echo "Executing: $(basename $sql_file)"
             docker run --rm -i -e PGPASSWORD=$DB_PASSWORD postgres:15-alpine \
-                psql -h $DB_HOST -U $DB_USER -d $DB_NAME < "$sql_file" 2>&1 | grep -v "already exists" || true
+                psql -h $DB_HOST -U $DB_USER -d $DB_NAME < "$sql_file" 2>&1 | head -20
         fi
     done
-    echo "✅ データベーススキーマ初期化完了"
+    echo "✓ Database initialized successfully"
 else
-    echo "⚠️  postgres/initディレクトリが見つかりません"
+    echo "Warning: postgres/init directory not found"
 fi
-EOF
+DBEOF
     
-    log_success "✅ データベース初期化完了"
+    log_success "データベースの初期化が完了しました"
 }
 
 # ========================================
-# Start Application
+# アプリケーション起動
 # ========================================
 start_application() {
-    log_step "アプリケーション起動"
+    log_header "アプリケーションの起動"
     
-    get_ec2_info
+    local ec2_ip=$(get_ec2_ip)
+    local key_path=$(get_ssh_key_path)
     
-    log_info "Dockerコンテナを起動しています..."
-    
-    local monitoring_flag=""
-    if [ "$WITH_MONITORING" = true ]; then
-        monitoring_flag="--profile monitoring"
-        log_info "監視システムも起動します（Grafana + Prometheus）"
+    if [ -z "$ec2_ip" ] || [ ! -f "$key_path" ]; then
+        log_error "EC2情報が取得できません"
+        exit 1
     fi
     
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP << EOF
+    log_info "Docker Composeでアプリケーションを起動しています..."
+    
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip bash << 'STARTEOF'
 cd /opt/production-management
 
-# Determine docker-compose command
+# Docker Composeコマンドの判定
 if command -v docker-compose &> /dev/null; then
     COMPOSE_CMD="docker-compose"
 elif docker compose version &> /dev/null; then
     COMPOSE_CMD="docker compose"
 else
-    echo "❌ docker-composeが見つかりません"
+    echo "Error: docker-compose not found"
     exit 1
 fi
 
-# Stop existing containers
-echo "既存のコンテナを停止しています..."
-\$COMPOSE_CMD down 2>/dev/null || true
+# 既存コンテナの停止
+echo "Stopping existing containers..."
+$COMPOSE_CMD down 2>/dev/null || true
 
-# Pull images
-echo "Dockerイメージをpullしています..."
-\$COMPOSE_CMD pull
+# Dockerイメージのプル
+echo "Pulling Docker images..."
+$COMPOSE_CMD pull
 
-# Start containers
-echo "コンテナを起動しています..."
-\$COMPOSE_CMD up -d ${monitoring_flag}
+# コンテナ起動
+echo "Starting containers..."
+$COMPOSE_CMD up -d
 
-# Wait for services
-echo "⏳ サービス起動待機中..."
+# 起動待機
+echo "Waiting for containers to be ready..."
 sleep 20
 
-# Check container status
+# コンテナステータス確認
 echo ""
-echo "📋 コンテナ状態:"
+echo "Container status:"
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
-# Check application health
+# ヘルスチェック
 echo ""
-echo "🏥 アプリケーションヘルスチェック..."
+echo "Checking application health..."
 max_retries=15
 retry=0
-while [ \$retry -lt \$max_retries ]; do
-    http_code=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost || echo "000")
-    if echo "\$http_code" | grep -qE "200|301|302"; then
-        echo "✅ アプリケーションは正常に応答しています (HTTP \$http_code)"
+while [ $retry -lt $max_retries ]; do
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost 2>/dev/null || echo "000")
+    if [[ "$http_code" =~ ^(200|301|302)$ ]]; then
+        echo "✓ Application is responding (HTTP $http_code)"
         break
     fi
-    retry=\$((retry + 1))
-    echo "再試行 \$retry/\$max_retries - 待機中..."
+    retry=$((retry + 1))
+    echo "Retry $retry/$max_retries - waiting for application (HTTP $http_code)..."
     sleep 5
 done
 
-if [ \$retry -eq \$max_retries ]; then
-    echo "⚠️  アプリケーションの応答確認に失敗しました"
-    echo "ログを確認してください: docker-compose logs"
+if [ $retry -eq $max_retries ]; then
+    echo "Warning: Application health check timed out"
 fi
 
-# Show recent logs
+# ログ表示
 echo ""
-echo "📋 最新のログ:"
-\$COMPOSE_CMD logs --tail=30
-EOF
+echo "Recent logs:"
+$COMPOSE_CMD logs --tail=30
+STARTEOF
     
-    log_success "✅ アプリケーション起動完了"
+    log_success "アプリケーションの起動が完了しました"
 }
 
 # ========================================
-# Show Status
+# EC2/RDS起動（既存インフラ）
 # ========================================
-show_status() {
-    log_step "システム状態確認"
+start_instances() {
+    log_header "AWSインスタンスの起動"
     
     cd "$TERRAFORM_DIR"
     
-    if [ ! -f "terraform.tfstate" ]; then
-        log_warning "Terraformの状態が見つかりません。まずデプロイを実行してください。"
+    local ec2_instance_id=$(terraform output -raw ec2_instance_id 2>/dev/null || echo "")
+    local rds_instance_id=$(terraform output -raw rds_instance_id 2>/dev/null || echo "")
+    
+    if [ -z "$ec2_instance_id" ]; then
+        log_error "EC2インスタンスIDが取得できません"
+        exit 1
+    fi
+    
+    # EC2起動
+    log_info "EC2インスタンスを起動しています..."
+    aws ec2 start-instances --instance-ids "$ec2_instance_id" > /dev/null
+    
+    # RDS起動（存在する場合）
+    if [ -n "$rds_instance_id" ]; then
+        log_info "RDSインスタンスを起動しています..."
+        aws rds start-db-instance --db-instance-identifier "$rds_instance_id" > /dev/null 2>&1 || \
+            log_warning "RDS is already running or cannot be started"
+    fi
+    
+    # 起動待機
+    log_info "インスタンスの起動を待機しています..."
+    aws ec2 wait instance-running --instance-ids "$ec2_instance_id"
+    
+    log_success "AWSインスタンスが起動しました"
+    
+    # アプリケーション起動
+    sleep 10
+    start_application
+}
+
+# ========================================
+# EC2/RDS停止
+# ========================================
+stop_instances() {
+    log_header "AWSインスタンスの停止"
+    
+    cd "$TERRAFORM_DIR"
+    
+    local ec2_instance_id=$(terraform output -raw ec2_instance_id 2>/dev/null || echo "")
+    local rds_instance_id=$(terraform output -raw rds_instance_id 2>/dev/null || echo "")
+    
+    if [ -z "$ec2_instance_id" ]; then
+        log_error "EC2インスタンスIDが取得できません"
+        exit 1
+    fi
+    
+    # EC2停止
+    log_info "EC2インスタンスを停止しています..."
+    aws ec2 stop-instances --instance-ids "$ec2_instance_id" > /dev/null
+    
+    # RDS停止（存在する場合）
+    if [ -n "$rds_instance_id" ]; then
+        log_info "RDSインスタンスを停止しています..."
+        aws rds stop-db-instance --db-instance-identifier "$rds_instance_id" > /dev/null 2>&1 || \
+            log_warning "RDS is already stopped or cannot be stopped"
+    fi
+    
+    # 停止待機
+    log_info "インスタンスの停止を待機しています..."
+    aws ec2 wait instance-stopped --instance-ids "$ec2_instance_id"
+    
+    log_success "AWSインスタンスが停止しました"
+}
+
+# ========================================
+# ステータス確認
+# ========================================
+check_status() {
+    log_header "システムステータス"
+    
+    cd "$TERRAFORM_DIR"
+    
+    local ec2_instance_id=$(terraform output -raw ec2_instance_id 2>/dev/null || echo "")
+    local ec2_ip=$(get_ec2_ip)
+    local rds_instance_id=$(terraform output -raw rds_instance_id 2>/dev/null || echo "")
+    
+    if [ -z "$ec2_instance_id" ]; then
+        log_warning "インフラがデプロイされていません"
+        echo "実行: ./aws-startup.sh deploy"
         return
     fi
     
-    get_ec2_info
-    
-    # AWS Resources Status
+    # EC2ステータス
     echo ""
-    echo "🌐 AWS リソース状態:"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📊 EC2 Instance:"
+    local ec2_state=$(aws ec2 describe-instances \
+        --instance-ids "$ec2_instance_id" \
+        --query 'Reservations[0].Instances[0].State.Name' \
+        --output text 2>/dev/null || echo "unknown")
     
-    # EC2 Status
-    local ec2_state=$(aws ec2 describe-instances --instance-ids "$EC2_ID" --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null || echo "不明")
-    echo "EC2 Instance: $ec2_state"
-    echo "  - Instance ID: $EC2_ID"
-    echo "  - Public IP: $EC2_IP"
-    
-    # RDS Status
-    local rds_id=$(terraform output -raw rds_instance_id 2>/dev/null || echo "")
-    if [ -n "$rds_id" ]; then
-        local rds_status=$(aws rds describe-db-instances --db-instance-identifier "$rds_id" --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "不明")
-        echo "RDS Database: $rds_status"
-        echo "  - Instance ID: $rds_id"
-    fi
-    
-    # Application URLs
-    echo ""
-    echo "🔗 アクセスURL:"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "HTTP:  http://$EC2_IP"
-    echo "HTTPS: https://$EC2_IP"
-    echo "API:   http://$EC2_IP/api/health"
-    
-    # Application Status (if EC2 is running)
     if [ "$ec2_state" = "running" ]; then
-        echo ""
-        echo "📦 Docker コンテナ状態:"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        
-        ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o ConnectTimeout=5 ec2-user@$EC2_IP \
-            "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'" 2>/dev/null || \
-            echo "⚠️  EC2に接続できませんでした"
+        echo -e "  ${GREEN}● running${NC}"
+        echo "  IP: $ec2_ip"
+    elif [ "$ec2_state" = "stopped" ]; then
+        echo -e "  ${YELLOW}● stopped${NC}"
+    else
+        echo -e "  ${RED}● $ec2_state${NC}"
     fi
     
-    # Cost Estimate
-    echo ""
-    echo "💰 月額コスト見積もり:"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    terraform output -raw monthly_cost_estimate 2>/dev/null || echo "見積もり情報なし"
-    
-    echo ""
-}
-
-# ========================================
-# Stop System
-# ========================================
-stop_system() {
-    log_step "システム停止"
-    
-    get_ec2_info
-    
-    if [ "$SKIP_CONFIRM" = false ]; then
+    # RDSステータス
+    if [ -n "$rds_instance_id" ]; then
         echo ""
-        read -p "システムを停止しますか? (yes/no): " confirm
-        if [ "$confirm" != "yes" ]; then
-            log_warning "停止をキャンセルしました"
-            return
+        echo "📊 RDS Instance:"
+        local rds_state=$(aws rds describe-db-instances \
+            --db-instance-identifier "$rds_instance_id" \
+            --query 'DBInstances[0].DBInstanceStatus' \
+            --output text 2>/dev/null || echo "unknown")
+        
+        if [ "$rds_state" = "available" ]; then
+            echo -e "  ${GREEN}● available${NC}"
+        elif [ "$rds_state" = "stopped" ]; then
+            echo -e "  ${YELLOW}● stopped${NC}"
+        else
+            echo -e "  ${CYAN}● $rds_state${NC}"
         fi
     fi
     
-    log_info "Dockerコンテナを停止しています..."
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP \
-        "cd /opt/production-management && docker-compose down" 2>/dev/null || true
-    
-    log_info "EC2インスタンスを停止しています..."
-    aws ec2 stop-instances --instance-ids "$EC2_ID" > /dev/null
-    
-    log_info "RDSインスタンスを停止しています..."
-    cd "$TERRAFORM_DIR"
-    local rds_id=$(terraform output -raw rds_instance_id 2>/dev/null || echo "")
-    if [ -n "$rds_id" ]; then
-        aws rds stop-db-instance --db-instance-identifier "$rds_id" > /dev/null 2>&1 || \
-            log_warning "RDSは既に停止しているか、停止できません"
+    # アプリケーションヘルスチェック
+    if [ "$ec2_state" = "running" ] && [ -n "$ec2_ip" ]; then
+        echo ""
+        echo "🌐 Application Health:"
+        local http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://$ec2_ip" 2>/dev/null || echo "000")
+        if [[ "$http_code" =~ ^(200|301|302)$ ]]; then
+            echo -e "  ${GREEN}● Healthy${NC} (HTTP $http_code)"
+            echo "  URL: http://$ec2_ip"
+        else
+            echo -e "  ${RED}● Unhealthy${NC} (HTTP $http_code)"
+        fi
     fi
     
-    log_success "✅ システム停止完了"
-    log_info "💡 起動する場合: $0 start"
+    echo ""
 }
 
 # ========================================
-# Restart System
-# ========================================
-restart_system() {
-    log_step "システム再起動"
-    
-    get_ec2_info
-    
-    log_info "EC2インスタンスを再起動しています..."
-    aws ec2 reboot-instances --instance-ids "$EC2_ID"
-    
-    log_info "⏳ EC2の再起動待機中（約60秒）..."
-    sleep 60
-    
-    log_info "アプリケーションを起動しています..."
-    start_application
-    
-    log_success "✅ システム再起動完了"
-}
-
-# ========================================
-# Show Logs
+# ログ表示
 # ========================================
 show_logs() {
-    log_step "ログ表示"
+    log_header "システムログ"
     
-    get_ec2_info
+    local ec2_ip=$(get_ec2_ip)
+    local key_path=$(get_ssh_key_path)
     
-    log_info "アプリケーションログを取得しています..."
+    if [ -z "$ec2_ip" ] || [ ! -f "$key_path" ]; then
+        log_error "EC2情報が取得できません"
+        exit 1
+    fi
     
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP \
-        "cd /opt/production-management && docker-compose logs --tail=100 -f"
+    log_info "リアルタイムログを表示しています (Ctrl+Cで終了)..."
+    
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip \
+        "cd /opt/production-management && docker-compose logs -f --tail=100"
 }
 
 # ========================================
-# SSH Connect
+# SSH接続
 # ========================================
-ssh_connect() {
-    log_step "EC2にSSH接続"
+connect_ssh() {
+    local ec2_ip=$(get_ec2_ip)
+    local key_path=$(get_ssh_key_path)
     
-    get_ec2_info
+    if [ -z "$ec2_ip" ] || [ ! -f "$key_path" ]; then
+        log_error "EC2情報が取得できません"
+        exit 1
+    fi
     
-    log_info "SSH接続中: ec2-user@$EC2_IP"
-    log_info "作業ディレクトリ: /opt/production-management"
+    log_info "SSH接続しています: $ec2_ip"
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip
+}
+
+# ========================================
+# ヘルスチェック
+# ========================================
+health_check() {
+    log_header "ヘルスチェック"
+    
+    local ec2_ip=$(get_ec2_ip)
+    local key_path=$(get_ssh_key_path)
+    
+    if [ -z "$ec2_ip" ] || [ ! -f "$key_path" ]; then
+        log_error "EC2情報が取得できません"
+        exit 1
+    fi
+    
+    # HTTP チェック
+    echo "🌐 HTTP Health Check:"
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://$ec2_ip" 2>/dev/null || echo "000")
+    if [[ "$http_code" =~ ^(200|301|302)$ ]]; then
+        echo -e "  ${GREEN}✓ HTTP: $http_code${NC}"
+    else
+        echo -e "  ${RED}✗ HTTP: $http_code${NC}"
+    fi
+    
+    # HTTPS チェック
+    local https_code=$(curl -k -s -o /dev/null -w "%{http_code}" "https://$ec2_ip" 2>/dev/null || echo "000")
+    if [[ "$https_code" =~ ^(200|301|302)$ ]]; then
+        echo -e "  ${GREEN}✓ HTTPS: $https_code${NC}"
+    else
+        echo -e "  ${YELLOW}⚠ HTTPS: $https_code${NC}"
+    fi
+    
+    # API ヘルスチェック
     echo ""
+    echo "🔧 API Health Check:"
+    local api_code=$(curl -s -o /dev/null -w "%{http_code}" "http://$ec2_ip/api/health" 2>/dev/null || echo "000")
+    if [ "$api_code" = "200" ]; then
+        echo -e "  ${GREEN}✓ API Health: 200${NC}"
+    else
+        echo -e "  ${RED}✗ API Health: $api_code${NC}"
+    fi
     
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no ec2-user@$EC2_IP
+    # Docker コンテナステータス
+    echo ""
+    echo "🐳 Docker Containers:"
+    ssh -i "$key_path" -o StrictHostKeyChecking=no ec2-user@$ec2_ip \
+        "docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null" || \
+        echo "  Unable to retrieve container status"
+    
+    echo ""
 }
 
 # ========================================
-# Destroy Infrastructure
+# データベースバックアップ
+# ========================================
+backup_database() {
+    log_header "データベースバックアップ"
+    
+    cd "$TERRAFORM_DIR"
+    local rds_instance_id=$(terraform output -raw rds_instance_id 2>/dev/null || echo "")
+    
+    if [ -z "$rds_instance_id" ]; then
+        log_error "RDSインスタンスIDが取得できません"
+        exit 1
+    fi
+    
+    local snapshot_id="manual-backup-$(date +%Y%m%d-%H%M%S)"
+    
+    log_info "スナップショットを作成しています: $snapshot_id"
+    aws rds create-db-snapshot \
+        --db-instance-identifier "$rds_instance_id" \
+        --db-snapshot-identifier "$snapshot_id"
+    
+    log_info "スナップショット作成中... (完了まで数分かかります)"
+    log_success "スナップショットID: $snapshot_id"
+    
+    echo ""
+    echo "確認コマンド:"
+    echo "  aws rds describe-db-snapshots --db-snapshot-identifier $snapshot_id"
+}
+
+# ========================================
+# インフラ削除
 # ========================================
 destroy_infrastructure() {
-    log_step "インフラストラクチャ削除"
+    log_header "インフラストラクチャの削除"
     
     cd "$TERRAFORM_DIR"
     
-    if [ ! -f "terraform.tfstate" ]; then
-        log_warning "削除するリソースが見つかりません"
-        return
-    fi
-    
-    log_warning "⚠️  警告: すべてのAWSリソースが削除されます！"
-    log_warning "⚠️  データベースのデータも失われます！"
+    log_warning "すべてのAWSリソースが削除されます！"
     echo ""
-    
-    if [ "$SKIP_CONFIRM" = false ]; then
-        read -p "本当に削除しますか? (yes/no): " confirm
-        if [ "$confirm" != "yes" ]; then
-            log_warning "削除をキャンセルしました"
-            return
-        fi
-        
-        read -p "最終確認: 'DELETE' と入力してください: " final_confirm
-        if [ "$final_confirm" != "DELETE" ]; then
-            log_warning "削除をキャンセルしました"
-            return
-        fi
+    read -p "本当に削除しますか? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        log_info "削除をキャンセルしました"
+        exit 0
     fi
     
-    log_info "リソースを削除しています..."
+    log_info "Terraformでリソースを削除しています..."
     terraform destroy -auto-approve
     
-    log_success "✅ すべてのリソースを削除しました"
+    log_success "インフラストラクチャが削除されました"
 }
 
 # ========================================
-# Full Deployment
+# 出力情報表示
 # ========================================
-full_deployment() {
-    log_step "フルデプロイ開始"
+show_outputs() {
+    log_header "デプロイ情報"
+    
+    cd "$TERRAFORM_DIR"
+    
+    local ec2_ip=$(get_ec2_ip)
     
     echo ""
-    log_info "以下の順序で実行します："
-    echo "  1. 前提条件チェック"
-    echo "  2. Terraform初期化"
-    echo "  3. インフラデプロイ"
-    echo "  4. アプリケーションアップロード"
-    echo "  5. アプリケーション設定"
-    echo "  6. データベース初期化"
-    echo "  7. アプリケーション起動"
+    echo "🌐 アクセス URL:"
+    echo "  HTTP:         http://$ec2_ip"
+    echo "  HTTPS:        https://$ec2_ip"
+    echo "  QR検品:       http://$ec2_ip/qr-inspection.html"
+    echo "  出荷検品:     http://$ec2_ip/shipping-inspection-mockup.html"
+    echo ""
+    echo "🔑 SSH接続:"
+    echo "  $(get_terraform_output ssh_command 2>/dev/null || echo 'Not available')"
+    echo ""
+    echo "💰 コスト見積:"
+    get_terraform_output monthly_cost_estimate 2>/dev/null || echo "  Not available"
     echo ""
     
-    if [ "$SKIP_CONFIRM" = false ]; then
-        read -p "続行しますか? (yes/no): " confirm
-        if [ "$confirm" != "yes" ]; then
-            log_warning "デプロイをキャンセルしました"
-            exit 0
-        fi
+    log_info "詳細情報: cd terraform && terraform output"
+}
+
+# ========================================
+# フルデプロイ（初回セットアップ）
+# ========================================
+full_deploy() {
+    log_header "フルデプロイメント開始"
+    
+    check_prerequisites
+    deploy_infrastructure
+    
+    echo ""
+    read -p "アプリケーションをデプロイして起動しますか? (yes/no): " deploy_app
+    if [ "$deploy_app" = "yes" ]; then
+        upload_application
+        setup_ssl
+        init_database
+        start_application
+        show_outputs
+    else
+        log_info "インフラのみデプロイしました"
+        show_outputs
     fi
     
-    # Execute steps
-    check_prerequisites || exit 1
-    setup_terraform
-    deploy_infrastructure
-    upload_application
-    configure_application
-    initialize_database
-    start_application
-    
-    echo ""
-    log_step "デプロイ完了"
-    show_status
-    
-    echo ""
-    log_success "🎉 システムが正常に稼働しています！"
-    echo ""
-    echo "次のステップ:"
-    echo "  - アクセス: http://$(cd $TERRAFORM_DIR && terraform output -raw ec2_public_ip 2>/dev/null)"
-    echo "  - ステータス確認: $0 status"
-    echo "  - ログ表示: $0 logs"
-    echo "  - SSH接続: $0 ssh"
-    echo ""
+    log_success "デプロイメントが完了しました！"
 }
 
 # ========================================
-# Main
+# ヘルプ表示
+# ========================================
+show_help() {
+    cat << 'HELPEOF'
+AWS 生産管理システム - 統合起動スクリプト
+Production Management System - AWS Unified Startup Script
+
+使用方法:
+  ./aws-startup.sh <コマンド>
+
+コマンド:
+  deploy          新規デプロイ（インフラ構築 + アプリケーション起動）
+  start           システム起動（EC2 + RDS）
+  stop            システム停止
+  restart         システム再起動
+  status          ステータス確認
+  logs            ログ表示（リアルタイム）
+  ssh             SSH接続
+  health          ヘルスチェック
+  backup          データベースバックアップ（RDSスナップショット）
+  destroy         全リソース削除
+  outputs         デプロイ情報表示
+  help            このヘルプを表示
+
+例:
+  # 初回セットアップ
+  ./aws-startup.sh deploy
+
+  # 日次運用
+  ./aws-startup.sh start     # 朝：起動
+  ./aws-startup.sh status    # ステータス確認
+  ./aws-startup.sh logs      # ログ確認
+  ./aws-startup.sh stop      # 夜：停止
+
+  # トラブルシューティング
+  ./aws-startup.sh health    # ヘルスチェック
+  ./aws-startup.sh ssh       # SSH接続して調査
+
+前提条件:
+  - Terraform がインストールされていること
+  - AWS CLI がインストール・設定されていること
+  - EC2用のSSH鍵ペアが作成されていること
+  - terraform/terraform.tfvars が設定されていること
+
+詳細:
+  terraform/README.md を参照してください
+
+HELPEOF
+}
+
+# ========================================
+# メイン処理
 # ========================================
 main() {
-    echo ""
-    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║  AWS Production Management System - Startup Script       ║${NC}"
-    echo -e "${CYAN}║  生産管理システム AWS稼働開始スクリプト                    ║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
+    local command=${1:-help}
     
-    case "$COMMAND" in
-        check)
-            check_prerequisites
-            ;;
-        setup)
-            check_prerequisites || exit 1
-            setup_terraform
-            ;;
+    case "$command" in
         deploy)
-            check_prerequisites || exit 1
-            setup_terraform
-            deploy_infrastructure
+            full_deploy
             ;;
         start)
-            get_ec2_info
-            
-            # Check if application files are uploaded
-            ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o ConnectTimeout=5 ec2-user@$EC2_IP \
-                "test -f /opt/production-management/docker-compose.yml" 2>/dev/null || {
-                log_warning "アプリケーションファイルがアップロードされていません"
-                upload_application
-                configure_application
-                initialize_database
-            }
-            
-            start_application
-            show_status
-            ;;
-        full)
-            full_deployment
-            ;;
-        status)
-            show_status
+            check_prerequisites
+            start_instances
             ;;
         stop)
-            stop_system
+            check_prerequisites
+            stop_instances
             ;;
         restart)
-            restart_system
+            check_prerequisites
+            stop_instances
+            sleep 5
+            start_instances
+            ;;
+        status)
+            check_prerequisites
+            check_status
             ;;
         logs)
+            check_prerequisites
             show_logs
             ;;
         ssh)
-            ssh_connect
+            check_prerequisites
+            connect_ssh
+            ;;
+        health)
+            check_prerequisites
+            health_check
+            ;;
+        backup)
+            check_prerequisites
+            backup_database
             ;;
         destroy)
+            check_prerequisites
             destroy_infrastructure
             ;;
+        outputs)
+            check_prerequisites
+            show_outputs
+            ;;
         help|--help|-h)
-            usage
+            show_help
             ;;
         *)
-            log_error "Unknown command: $COMMAND"
+            log_error "不明なコマンド: $command"
             echo ""
-            usage
+            show_help
             exit 1
             ;;
     esac
 }
 
-# Run main
+# スクリプト実行
 main "$@"
