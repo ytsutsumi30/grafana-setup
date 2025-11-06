@@ -89,10 +89,16 @@
 
     <div class="header">
         <h1>🚚 出荷指示管理システム</h1>
-        <button class="mode-switch-btn" onclick="showModeSelection()" title="デバイスモード変更">
-            <span class="mode-switch-icon">📱</span>
-            <span class="mode-switch-text" id="current-mode-text">モード変更</span>
-        </button>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="shipping-instruction-maintenance.html" class="mode-switch-btn" style="text-decoration: none; display: inline-flex; align-items: center;" title="出荷指示マスタメンテナンス">
+                <span class="mode-switch-icon">⚙️</span>
+                <span class="mode-switch-text">マスタ</span>
+            </a>
+            <button class="mode-switch-btn" onclick="showModeSelection()" title="デバイスモード変更">
+                <span class="mode-switch-icon">📱</span>
+                <span class="mode-switch-text" id="current-mode-text">モード変更</span>
+            </button>
+        </div>
     </div>
 
     <div class="container">
