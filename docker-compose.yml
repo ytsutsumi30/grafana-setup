@@ -60,10 +60,20 @@ services:
       - DB_NAME=production_db
       - DB_USER=production_user
       - DB_PASSWORD=production_pass
+  # AWS設定（既存）
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+  # GCP設定（新規追加）
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/documentai-key.json
+      - DOCUMENTAI_PROJECT_ID=${DOCUMENTAI_PROJECT_ID:-577010681495}
+      - DOCUMENTAI_LOCATION=${DOCUMENTAI_LOCATION:-us}
+      - DOCUMENTAI_PROCESSOR_ID=${DOCUMENTAI_PROCESSOR_ID}
     env_file:
       - ./api/.env
     volumes:
       - ./api:/app
+      - ./secrets:/app/secrets:ro  # ← この行を追加
     logging:
       driver: "json-file"
       options:
