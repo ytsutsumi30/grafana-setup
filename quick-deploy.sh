@@ -113,12 +113,12 @@ if [ "$RESTART_ONLY" = true ]; then
     
     # ヘルスチェック
     log_info "ヘルスチェック中..."
-    sleep 5
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$EC2_IP/)
+    sleep 10
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://hispot-iot.com/ || echo "000")
     if [ "$HTTP_STATUS" = "200" ]; then
-        log_success "アプリケーション正常稼働中 (HTTP $HTTP_STATUS)"
+        log_success "アプリケーション正常稼働中 (HTTPS $HTTP_STATUS)"
     else
-        log_warning "アプリケーション確認: HTTP $HTTP_STATUS"
+        log_warning "アプリケーション確認: HTTPS $HTTP_STATUS"
     fi
     exit 0
 fi
@@ -217,21 +217,29 @@ EOF
     
     # 5. ヘルスチェック
     log_info "ヘルスチェック中..."
-    sleep 5
+    sleep 10
     
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$EC2_IP/)
+    # ALB経由のHTTPSチェック
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://hispot-iot.com/ || echo "000")
     if [ "$HTTP_STATUS" = "200" ]; then
-        log_success "アプリケーション正常稼働中 (HTTP $HTTP_STATUS)"
+        log_success "アプリケーション正常稼働中 (HTTPS $HTTP_STATUS)"
     else
-        log_warning "アプリケーション確認: HTTP $HTTP_STATUS"
+        log_warning "アプリケーション確認: HTTPS $HTTP_STATUS (再試行します...)"
+        sleep 5
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://hispot-iot.com/ || echo "000")
+        if [ "$HTTP_STATUS" = "200" ]; then
+            log_success "アプリケーション正常稼働中 (HTTPS $HTTP_STATUS)"
+        else
+            log_warning "アプリケーション確認: HTTPS $HTTP_STATUS"
+        fi
     fi
     
     # API確認
-    API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$EC2_IP/api/shipping-instructions?status=pending)
+    API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://hispot-iot.com/api/health || echo "000")
     if [ "$API_STATUS" = "200" ]; then
-        log_success "API正常稼働中 (HTTP $API_STATUS)"
+        log_success "API正常稼働中 (HTTPS $API_STATUS)"
     else
-        log_warning "API確認: HTTP $API_STATUS"
+        log_warning "API確認: HTTPS $API_STATUS"
     fi
 else
     log_warning "再起動はスキップされました（--no-restart）"
@@ -243,8 +251,10 @@ echo "=========================================="
 log_success "デプロイ完了！"
 echo "=========================================="
 echo ""
-echo "📱 アプリケーション: http://$EC2_IP"
-echo "🔐 HTTPS: https://$EC2_IP"
+echo "📱 アプリケーション: https://hispot-iot.com"
+echo "🔌 API: https://hispot-iot.com/api/health"
+echo "🛠️  メンテナンス: https://hispot-iot.com/maintenance.html"
+echo "� 製品マスタ: https://hispot-iot.com/products.html"
 echo "🔑 SSH: ssh -i $KEY_PATH ubuntu@$EC2_IP"
 echo ""
 
