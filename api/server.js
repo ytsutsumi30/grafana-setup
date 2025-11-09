@@ -1775,6 +1775,191 @@ app.get('/qr-inspections/:id', async (req, res) => {
     }
 });
 
+// === 出荷指示 CRUD API ===
+
+// 出荷指示作成バリデーションスキーマ
+const shippingInstructionSchema = Joi.object({
+    instruction_id: Joi.string().max(50).required(),
+    product_id: Joi.number().required(),
+    quantity: Joi.number().min(1).required(),
+    shipping_date: Joi.date().required(),
+    shipping_location_id: Joi.number().required(),
+    delivery_location_id: Joi.number().required(),
+    customer_name: Joi.string().max(255).allow(''),
+    priority: Joi.string().valid('high', 'normal', 'low').default('normal'),
+    status: Joi.string().valid('pending', 'processing', 'shipped', 'delivered').default('pending'),
+    tracking_number: Joi.string().max(100).allow(''),
+    notes: Joi.string().allow('')
+});
+
+// 出荷指示作成
+app.post('/shipping-instructions', async (req, res) => {
+    try {
+        const { error, value } = shippingInstructionSchema.validate(req.body);
+        if (error) {
+            return res.status(400).json({ error: error.details[0].message });
+        }
+
+        const {
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date,
+            shipping_location_id,
+            delivery_location_id,
+            customer_name,
+            priority,
+            status,
+            tracking_number,
+            notes
+        } = value;
+
+        // instruction_idの重複チェック
+        const duplicateCheck = await pool.query(
+            'SELECT id FROM shipping_instructions WHERE instruction_id = $1',
+            [instruction_id]
+        );
+
+        if (duplicateCheck.rows.length > 0) {
+            return res.status(409).json({ error: '出荷指示IDが既に存在します' });
+        }
+
+        const result = await pool.query(`
+            INSERT INTO shipping_instructions (
+                instruction_id, product_id, quantity, shipping_date,
+                shipping_location_id, delivery_location_id, customer_name,
+                priority, status, tracking_number, notes
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *
+        `, [
+            instruction_id, product_id, quantity, shipping_date,
+            shipping_location_id, delivery_location_id, customer_name,
+            priority, status, tracking_number, notes
+        ]);
+
+        logger.info('Shipping instruction created:', result.rows[0]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error creating shipping instruction:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷指示更新
+app.put('/shipping-instructions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { error, value } = shippingInstructionSchema.validate(req.body);
+        if (error) {
+            return res.status(400).json({ error: error.details[0].message });
+        }
+
+        const {
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date,
+            shipping_location_id,
+            delivery_location_id,
+            customer_name,
+            priority,
+            status,
+            tracking_number,
+            notes
+        } = value;
+
+        // instruction_idの重複チェック（自分以外）
+        const duplicateCheck = await pool.query(
+            'SELECT id FROM shipping_instructions WHERE instruction_id = $1 AND id != $2',
+            [instruction_id, id]
+        );
+
+        if (duplicateCheck.rows.length > 0) {
+            return res.status(409).json({ error: '出荷指示IDが既に存在します' });
+        }
+
+        const result = await pool.query(`
+            UPDATE shipping_instructions
+            SET instruction_id = $1,
+                product_id = $2,
+                quantity = $3,
+                shipping_date = $4,
+                shipping_location_id = $5,
+                delivery_location_id = $6,
+                customer_name = $7,
+                priority = $8,
+                status = $9,
+                tracking_number = $10,
+                notes = $11,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $12
+            RETURNING *
+        `, [
+            instruction_id, product_id, quantity, shipping_date,
+            shipping_location_id, delivery_location_id, customer_name,
+            priority, status, tracking_number, notes, id
+        ]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        logger.info('Shipping instruction updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating shipping instruction:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷指示削除
+app.delete('/shipping-instructions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 関連する検品記録があるかチェック
+        const inspectionCheck = await pool.query(
+            'SELECT id FROM shipping_inspections WHERE shipping_instruction_id = $1',
+            [id]
+        );
+
+        if (inspectionCheck.rows.length > 0) {
+            return res.status(409).json({
+                error: '検品記録が存在するため削除できません',
+                details: '先に検品記録を削除してください'
+            });
+        }
+
+        // QR検品記録があるかチェック
+        const qrInspectionCheck = await pool.query(
+            'SELECT id FROM qr_inspections WHERE shipping_instruction_id = $1',
+            [id]
+        );
+
+        if (qrInspectionCheck.rows.length > 0) {
+            return res.status(409).json({
+                error: 'QR検品記録が存在するため削除できません',
+                details: '先にQR検品記録を削除してください'
+            });
+        }
+
+        const result = await pool.query(
+            'DELETE FROM shipping_instructions WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        logger.info('Shipping instruction deleted:', result.rows[0]);
+        res.json({ message: 'Shipping instruction deleted successfully', data: result.rows[0] });
+    } catch (error) {
+        logger.error('Error deleting shipping instruction:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // 出荷検品記録の作成
 const shippingInspectionSchema = Joi.object({
     shipping_instruction_id: Joi.number().required(),
