@@ -667,6 +667,186 @@ app.get('/shipping-instructions/:id', async (req, res) => {
     }
 });
 
+// 出荷指示登録
+app.post('/shipping-instructions', async (req, res) => {
+    try {
+        const {
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date,
+            shipping_location_id,
+            delivery_location_id,
+            customer_name,
+            priority,
+            status,
+            tracking_number,
+            notes
+        } = req.body;
+
+        // バリデーション
+        if (!instruction_id || !product_id || !quantity) {
+            return res.status(400).json({
+                error: 'Instruction ID, product ID, and quantity are required'
+            });
+        }
+
+        if (quantity <= 0) {
+            return res.status(400).json({
+                error: 'Quantity must be greater than 0'
+            });
+        }
+
+        const result = await pool.query(`
+            INSERT INTO shipping_instructions
+            (instruction_id, product_id, quantity, shipping_date,
+             shipping_location_id, delivery_location_id, customer_name,
+             priority, status, tracking_number, notes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *
+        `, [
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date || null,
+            shipping_location_id || null,
+            delivery_location_id || null,
+            customer_name || null,
+            priority || 'normal',
+            status || 'pending',
+            tracking_number || null,
+            notes || null
+        ]);
+
+        logger.info('Shipping instruction created:', result.rows[0]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error creating shipping instruction:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Instruction ID already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Invalid product, shipping location, or delivery location ID' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷指示更新
+app.put('/shipping-instructions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date,
+            shipping_location_id,
+            delivery_location_id,
+            customer_name,
+            priority,
+            status,
+            tracking_number,
+            notes
+        } = req.body;
+
+        // バリデーション
+        if (!instruction_id || !product_id || !quantity) {
+            return res.status(400).json({
+                error: 'Instruction ID, product ID, and quantity are required'
+            });
+        }
+
+        if (quantity <= 0) {
+            return res.status(400).json({
+                error: 'Quantity must be greater than 0'
+            });
+        }
+
+        const result = await pool.query(`
+            UPDATE shipping_instructions
+            SET instruction_id = $1, product_id = $2, quantity = $3,
+                shipping_date = $4, shipping_location_id = $5,
+                delivery_location_id = $6, customer_name = $7,
+                priority = $8, status = $9, tracking_number = $10,
+                notes = $11, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $12
+            RETURNING *
+        `, [
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date || null,
+            shipping_location_id || null,
+            delivery_location_id || null,
+            customer_name || null,
+            priority || 'normal',
+            status || 'pending',
+            tracking_number || null,
+            notes || null,
+            id
+        ]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        logger.info('Shipping instruction updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating shipping instruction:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Instruction ID already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Invalid product, shipping location, or delivery location ID' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷指示削除
+app.delete('/shipping-instructions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 関連する検品データの確認
+        const relatedRecords = await pool.query(`
+            SELECT
+                (SELECT COUNT(*) FROM shipping_inspections WHERE shipping_instruction_id = $1) as shipping_inspections,
+                (SELECT COUNT(*) FROM qr_inspections WHERE shipping_instruction_id = $1) as qr_inspections
+        `, [id]);
+
+        const relations = relatedRecords.rows[0];
+        const hasRelations = Object.values(relations).some(count => parseInt(count) > 0);
+
+        if (hasRelations) {
+            return res.status(409).json({
+                error: '関連する検品データが存在するため削除できません',
+                relations: relations
+            });
+        }
+
+        const result = await pool.query(
+            'DELETE FROM shipping_instructions WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        logger.info('Shipping instruction deleted:', result.rows[0]);
+        res.json({ message: 'Shipping instruction deleted successfully' });
+    } catch (error) {
+        logger.error('Error deleting shipping instruction:', error);
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(409).json({ error: 'Cannot delete: shipping instruction is referenced by other records' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // 納入場所別サマリー取得
 app.get('/shipping-instructions/summary/by-delivery-location', async (req, res) => {
     try {
