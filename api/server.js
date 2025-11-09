@@ -1863,14 +1863,14 @@ app.get('/reports/dashboard-stats', async (req, res) => {
             inventoryStats
         ] = await Promise.all([
             pool.query(`
-                SELECT 
+                SELECT
                     status,
                     COUNT(*) as count
-                FROM shipping_instructions 
+                FROM shipping_instructions
                 GROUP BY status
             `),
             pool.query(`
-                SELECT 
+                SELECT
                     COUNT(*) as total_inspections,
                     SUM(CASE WHEN final_approval THEN 1 ELSE 0 END) as approved_inspections,
                     AVG(passed_quantity::float / NULLIF(inspected_quantity, 0) * 100) as pass_rate
@@ -1878,7 +1878,7 @@ app.get('/reports/dashboard-stats', async (req, res) => {
                 WHERE inspection_date >= CURRENT_DATE - INTERVAL '30 days'
             `),
             pool.query(`
-                SELECT 
+                SELECT
                     COUNT(*) as total_products,
                     SUM(current_stock) as total_stock,
                     SUM(available_stock) as available_stock
@@ -1893,6 +1893,33 @@ app.get('/reports/dashboard-stats', async (req, res) => {
         });
     } catch (error) {
         logger.error('Error fetching dashboard stats:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 本日の検品実績統計
+app.get('/reports/daily-inspection-stats', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'completed' AND DATE(completed_at) = CURRENT_DATE) as completed_today,
+                COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
+                COUNT(*) FILTER (WHERE status = 'failed' AND DATE(completed_at) = CURRENT_DATE) as failed_today,
+                COUNT(*) FILTER (WHERE status = 'completed' AND DATE(completed_at) = CURRENT_DATE) * 100.0 /
+                    NULLIF(COUNT(*) FILTER (WHERE (status = 'completed' OR status = 'failed') AND DATE(completed_at) = CURRENT_DATE), 0) as pass_rate_today
+            FROM qr_inspections
+        `);
+
+        const stats = result.rows[0];
+
+        res.json({
+            completed_today: parseInt(stats.completed_today) || 0,
+            in_progress: parseInt(stats.in_progress) || 0,
+            failed_today: parseInt(stats.failed_today) || 0,
+            pass_rate_today: parseFloat(stats.pass_rate_today) || 0
+        });
+    } catch (error) {
+        logger.error('Error fetching daily inspection stats:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
