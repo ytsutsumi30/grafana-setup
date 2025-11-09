@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     loadShipments();
     loadDailyStats();
+    loadRecentInspections();
 });
 
 function initializeModals() {
@@ -253,6 +254,80 @@ async function loadDailyStats() {
         if (passRateElement) {
             passRateElement.textContent = '-';
         }
+    }
+}
+
+async function loadRecentInspections() {
+    const container = document.getElementById('recent-inspections-container');
+    if (!container) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/reports/recent-inspections?limit=5`);
+        if (!response.ok) {
+            throw new Error(`検品履歴の取得に失敗しました (HTTP ${response.status})`);
+        }
+
+        const inspections = await response.json();
+
+        if (inspections.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-3">
+                    <i class="fas fa-inbox fa-2x mb-2"></i>
+                    <div class="small">検品履歴がありません</div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = inspections.map(inspection => {
+            const time = formatInspectionTime(inspection.completed_at || inspection.created_at);
+            const instructionId = inspection.instruction_id || '不明';
+            const inspectorName = inspection.inspector_name || '不明';
+
+            // ステータスマッピング
+            let statusClass = 'status-pending';
+            let statusText = '検品中';
+
+            if (inspection.status === 'completed') {
+                statusClass = 'status-approved';
+                statusText = '承認済み';
+            } else if (inspection.status === 'failed') {
+                statusClass = 'status-rejected';
+                statusText = '要再検品';
+            }
+
+            return `
+                <div class="inspection-item">
+                    <small class="text-muted">${time}</small>
+                    <div>${instructionId} - ${inspectorName}</div>
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('loadRecentInspections error:', error);
+        container.innerHTML = `
+            <div class="text-center text-muted py-3">
+                <i class="fas fa-exclamation-triangle text-warning mb-2"></i>
+                <div class="small">履歴の読み込みに失敗しました</div>
+            </div>
+        `;
+    }
+}
+
+function formatInspectionTime(dateTimeString) {
+    if (!dateTimeString) return '--:--';
+
+    try {
+        const date = new Date(dateTimeString);
+        if (isNaN(date.getTime())) return '--:--';
+
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+    } catch (error) {
+        console.error('formatInspectionTime error:', error);
+        return '--:--';
     }
 }
 

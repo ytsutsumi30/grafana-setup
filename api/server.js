@@ -1924,6 +1924,35 @@ app.get('/reports/daily-inspection-stats', async (req, res) => {
     }
 });
 
+// 最近の検品履歴
+app.get('/reports/recent-inspections', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 5;
+
+        const result = await pool.query(`
+            SELECT
+                qi.id,
+                qi.inspector_name,
+                qi.status,
+                qi.completed_at,
+                qi.created_at,
+                si.instruction_id,
+                p.product_name
+            FROM qr_inspections qi
+            LEFT JOIN shipping_instructions si ON qi.shipping_instruction_id = si.id
+            LEFT JOIN products p ON qi.product_id = p.id
+            WHERE qi.status IN ('completed', 'failed')
+            ORDER BY COALESCE(qi.completed_at, qi.created_at) DESC
+            LIMIT $1
+        `, [limit]);
+
+        res.json(result.rows);
+    } catch (error) {
+        logger.error('Error fetching recent inspections:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // === 在庫管理API ===
 
 // 在庫一覧取得
