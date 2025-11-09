@@ -8,8 +8,31 @@
 
 class OCREngineEnhanced {
   constructor() {
-    this.preprocessor = new ImagePreprocessor();
+    this.preprocessor = null; // 遅延初期化
     this.results = [];
+    this.tesseractWorker = null;
+  }
+
+  /**
+   * 初期化
+   */
+  async initialize() {
+    if (typeof ImagePreprocessor !== 'undefined') {
+      this.preprocessor = new ImagePreprocessor();
+    }
+    
+    // Tesseract Worker初期化
+    if (typeof Tesseract !== 'undefined') {
+      this.tesseractWorker = await Tesseract.createWorker('jpn+eng', 1, {
+        logger: m => console.log('[Tesseract Worker]', m)
+      });
+      await this.tesseractWorker.setParameters({
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+        tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY,
+      });
+    }
+    
+    return this;
   }
 
   /**
@@ -19,13 +42,17 @@ class OCREngineEnhanced {
     const startTime = Date.now();
     
     // 画像前処理
-    const processedImage = await this.preprocessor.processImage(image, {
-      denoise: true,
-      contrast: true,
-      binarize: true,
-      upscale: true,
-      sharpening: true
-    });
+    let processedImage = image;
+    if (this.preprocessor) {
+      processedImage = await this.preprocessor.process(image, {
+        grayscale: true,
+        denoise: true,
+        contrast: true,
+        deskew: options.deskew !== false,
+        binarize: true,
+        upscale: options.upscale || false
+      });
+    }
     
     // Tesseract設定最適化
     const tesseractConfig = {
@@ -36,35 +63,42 @@ class OCREngineEnhanced {
       // 1: Neural nets LSTM engine only (推奨)
       // 2: Legacy + LSTM
       // 3: Default
-      oem: 1,
+      tessedit_ocr_engine_mode: options.oem || 1,
       
       // Page Segmentation Mode
       // 3: Fully automatic page segmentation (デフォルト)
       // 6: Assume a single uniform block of text (推奨 - 伝票用)
       // 7: Treat the image as a single text line
       // 11: Sparse text. Find as much text as possible
-      psm: options.psm || 6,
+      tessedit_pageseg_mode: options.psm || 6,
       
       // 追加設定
-      tessedit_char_whitelist: options.whitelist || '',
       preserve_interword_spaces: '1',
-      tessedit_pageseg_mode: options.psm || 6
+      ...(options.whitelist && { tessedit_char_whitelist: options.whitelist })
     };
     
     console.log('[OCR Enhanced] Tesseract設定:', tesseractConfig);
     
     try {
-      const result = await Tesseract.recognize(
-        processedImage,
-        tesseractConfig.lang,
-        {
-          logger: (m) => {
-            if (m.status === 'recognizing text') {
-              console.log(`[OCR Enhanced] 進捗: ${(m.progress * 100).toFixed(0)}%`);
+      let result;
+      if (this.tesseractWorker) {
+        // Worker使用（高速）
+        await this.tesseractWorker.setParameters(tesseractConfig);
+        result = await this.tesseractWorker.recognize(processedImage);
+      } else {
+        // 通常モード
+        result = await Tesseract.recognize(
+          processedImage,
+          tesseractConfig.lang,
+          {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                console.log(`[OCR Enhanced] 進捗: ${(m.progress * 100).toFixed(0)}%`);
+              }
             }
           }
-        }
-      );
+        );
+      }
       
       const processingTime = Date.now() - startTime;
       
@@ -79,10 +113,11 @@ class OCREngineEnhanced {
         })),
         words: result.data.words.map(word => ({
           text: word.text,
-          confidence: word.confidence
+          confidence: word.confidence,
+          bbox: word.bbox
         })),
         processingTime,
-        preprocessed: true
+        preprocessed: !!this.preprocessor
       };
       
     } catch (error) {
@@ -401,6 +436,16 @@ class OCREngineEnhanced {
       avgConfidence: avgConfidence.toFixed(2),
       byEngine: engineStats
     };
+  }
+
+  /**
+   * クリーンアップ
+   */
+  async cleanup() {
+    if (this.tesseractWorker) {
+      await this.tesseractWorker.terminate();
+      this.tesseractWorker = null;
+    }
   }
 }
 

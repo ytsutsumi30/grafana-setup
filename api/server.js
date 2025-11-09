@@ -16,6 +16,8 @@ const execPromise = util.promisify(exec);
 // OCRルートのインポート
 const ocrRoutes = require('./routes/ocr');
 const ocrEnhanceRoutes = require('./routes/ocr-enhance');
+const ocrAiRoutes = require('./routes/ocr-ai');
+const ocrFeedbackRoutes = require('./routes/ocr-feedback');
 
 // ログ設定
 const logger = winston.createLogger({
@@ -87,8 +89,12 @@ app.get('/health', (req, res) => {
 });
 
 // === OCR API（AWS Textract） ===
+app.use('/api/ocr-ai', ocrAiRoutes);
+app.use('/api/ocr-feedback', ocrFeedbackRoutes);
 app.use('/ocr', ocrRoutes);
 app.use('/api/ocr', ocrEnhanceRoutes);
+app.use('/api/ocr-ai', ocrAiRoutes);
+app.use('/api/ocr-feedback', ocrFeedbackRoutes);
 
 // データベース接続テスト
 app.get('/db-test', async (req, res) => {
