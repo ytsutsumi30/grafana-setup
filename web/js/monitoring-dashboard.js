@@ -46,6 +46,51 @@ function refreshAllData() {
     }, 1000);
 }
 
+// サンプルデータ生成
+async function generateSampleData() {
+    if (!confirm('モニタリングのサンプルデータを生成します。\n既存のモニタリングデータは削除されます。\nよろしいですか？')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/monitoring/generate-sample-data`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'サンプルデータの生成に失敗しました');
+        }
+
+        const result = await response.json();
+
+        // Bootstrap Toast 表示（Toastがない場合はalert）
+        if (typeof showToast === 'function') {
+            showToast(`サンプルデータを生成しました: 在庫スナップショット ${result.data.inventory_snapshots}件、パフォーマンス記録 ${result.data.performance_records}件、アラート ${result.data.alerts}件`, 'success');
+        } else {
+            alert(`✅ ${result.message}\n\n` +
+                  `在庫スナップショット: ${result.data.inventory_snapshots}件\n` +
+                  `パフォーマンス記録: ${result.data.performance_records}件\n` +
+                  `アラート: ${result.data.alerts}件\n` +
+                  `使用製品数: ${result.data.products_used}件`);
+        }
+
+        // 全データを再読み込み
+        refreshAllData();
+
+    } catch (error) {
+        console.error('Sample data generation error:', error);
+        if (typeof showToast === 'function') {
+            showToast(`エラー: ${error.message}`, 'danger');
+        } else {
+            alert(`❌ エラー: ${error.message}`);
+        }
+    }
+}
+
 // Chart.js 初期化
 function initializeCharts() {
     // 時間帯別出荷推移チャート

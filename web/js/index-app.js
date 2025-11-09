@@ -383,8 +383,11 @@ function createShipmentCard(item) {
                     <p><strong>出荷日:</strong> ${shippingDate}</p>
                 </div>
                 <div class="col-md-6">
-                    <p><strong>製品バーコード:</strong></p>
-                    <div class="barcode-display">${barcodeText} ${item.product_code}</div>
+                    <p><strong>製品QRコード:</strong></p>
+                    <div class="text-center" style="cursor: pointer;" data-role="qr-code-container">
+                        <div id="qrcode-${item.id}" style="display: inline-block;"></div>
+                        <p class="small text-muted mt-1">クリックでQR検品画面へ</p>
+                    </div>
                     <p class="mt-2"><strong>配送先:</strong> ${item.delivery_location_name || '未設定'}</p>
                     <p><strong>特記事項:</strong> ${item.notes || 'なし'}</p>
                 </div>
@@ -402,6 +405,31 @@ function createShipmentCard(item) {
             </div>
         </div>
     `;
+
+    // QRコード生成
+    const qrContainer = card.querySelector(`#qrcode-${item.id}`);
+    if (qrContainer && typeof QRCode !== 'undefined') {
+        // QRコードのデータ: 製品コードをJSON形式で埋め込む
+        const qrData = JSON.stringify({
+            type: 'product',
+            product_code: item.product_code,
+            product_id: item.product_id,
+            instruction_id: item.instruction_id,
+            shipping_instruction_id: item.id
+        });
+
+        new QRCode(qrContainer, {
+            text: qrData,
+            width: 128,
+            height: 128,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    }
+
+    // QRコードをクリックした時にQR検品画面に遷移
+    card.querySelector('[data-role="qr-code-container"]').addEventListener('click', () => openQRInspection(item));
 
     card.querySelector('[data-role="start-inspection"]').addEventListener('click', () => openInspection(item));
     card.querySelector('[data-role="start-qr"]').addEventListener('click', () => openQRInspection(item));
@@ -1025,9 +1053,36 @@ function resetQRState() {
 }
 
 async function handleQRScanResult(qrCode) {
+    // まず、製品QRコード（JSON形式）かチェック
+    try {
+        const qrData = JSON.parse(qrCode);
+
+        // 製品QRコードの場合（type: 'product'）
+        if (qrData && qrData.type === 'product' && qrData.shipping_instruction_id) {
+            console.log('Product QR code detected:', qrData);
+
+            // QRスキャナーを停止
+            stopQRScanner();
+
+            // QR検品画面を開く（QR検品ボタン押下と同じ動作）
+            const item = {
+                id: qrData.shipping_instruction_id,
+                product_code: qrData.product_code,
+                product_id: qrData.product_id,
+                instruction_id: qrData.instruction_id
+            };
+
+            await openQRInspection(item);
+            return; // 通常の同梱物スキャン処理はスキップ
+        }
+    } catch (parseError) {
+        // JSON parse失敗 = 通常の同梱物QRコード
+        // 何もせず、通常の処理に進む
+    }
+
     // 読み取ったQRコードを表示
     displayLastScannedQR(qrCode);
-    
+
     const success = await processQRScan(qrCode);
 
     const hasPending = qrContext?.items?.some(item => item.status === 'pending');
