@@ -409,14 +409,8 @@ function createShipmentCard(item) {
     // QRコード生成
     const qrContainer = card.querySelector(`#qrcode-${item.id}`);
     if (qrContainer && typeof QRCode !== 'undefined') {
-        // QRコードのデータ: 製品コードをJSON形式で埋め込む
-        const qrData = JSON.stringify({
-            type: 'product',
-            product_code: item.product_code,
-            product_id: item.product_id,
-            instruction_id: item.instruction_id,
-            shipping_instruction_id: item.id
-        });
+        // QRコードのデータ: QR検品画面へのFQDN URL
+        const qrData = `https://hispot-iot.com/qr-inspection.html?id=${item.id}`;
 
         new QRCode(qrContainer, {
             text: qrData,
@@ -1053,31 +1047,28 @@ function resetQRState() {
 }
 
 async function handleQRScanResult(qrCode) {
-    // まず、製品QRコード（JSON形式）かチェック
-    try {
-        const qrData = JSON.parse(qrCode);
+    // まず、製品QRコード（URL形式）かチェック
+    // https://hispot-iot.com/qr-inspection.html?id=XXX
+    if (qrCode.includes('hispot-iot.com/qr-inspection.html?id=')) {
+        console.log('Product QR URL detected:', qrCode);
 
-        // 製品QRコードの場合（type: 'product'）
-        if (qrData && qrData.type === 'product' && qrData.shipping_instruction_id) {
-            console.log('Product QR code detected:', qrData);
+        // QRスキャナーを停止
+        stopQRScanner();
 
-            // QRスキャナーを停止
-            stopQRScanner();
+        // URLからIDを抽出
+        try {
+            const url = new URL(qrCode);
+            const shippingInstructionId = url.searchParams.get('id');
 
-            // QR検品画面を開く（QR検品ボタン押下と同じ動作）
-            const item = {
-                id: qrData.shipping_instruction_id,
-                product_code: qrData.product_code,
-                product_id: qrData.product_id,
-                instruction_id: qrData.instruction_id
-            };
-
-            await openQRInspection(item);
-            return; // 通常の同梱物スキャン処理はスキップ
+            if (shippingInstructionId) {
+                // QR検品画面を開く（QR検品ボタン押下と同じ動作）
+                const item = { id: parseInt(shippingInstructionId) };
+                await openQRInspection(item);
+                return; // 通常の同梱物スキャン処理はスキップ
+            }
+        } catch (urlError) {
+            console.error('Failed to parse QR URL:', urlError);
         }
-    } catch (parseError) {
-        // JSON parse失敗 = 通常の同梱物QRコード
-        // 何もせず、通常の処理に進む
     }
 
     // 読み取ったQRコードを表示
