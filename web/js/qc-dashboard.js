@@ -29,7 +29,49 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('histogram-metric')?.addEventListener('change', loadHistogramData);
     document.getElementById('scatter-x')?.addEventListener('change', loadScatterData);
     document.getElementById('scatter-y')?.addEventListener('change', loadScatterData);
+
+    // サンプルデータ生成ボタン
+    document.getElementById('btn-generate-sample-data')?.addEventListener('click', generateSampleData);
 });
+
+async function generateSampleData() {
+    const btn = document.getElementById('btn-generate-sample-data');
+
+    if (!confirm('過去30日分のサンプルデータを生成します。\n既存のサンプルデータは削除されます。\nよろしいですか？')) {
+        return;
+    }
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>生成中...';
+
+        const response = await fetch(`${API_BASE_URL}/qc-tools/generate-sample-data`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error('サンプルデータの生成に失敗しました');
+        }
+
+        const result = await response.json();
+
+        showToast(`サンプルデータの生成が完了しました\n検品記録: ${result.total_inspections}件\n検品詳細: ${result.total_details}件`, 'success', 5000);
+
+        // 全データを再読み込み
+        loadParetoData();
+        loadControlChartData();
+        loadHistogramData();
+        loadScatterData();
+        loadChecksheetData();
+    } catch (error) {
+        console.error('generateSampleData error:', error);
+        showToast('サンプルデータの生成に失敗しました: ' + error.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-database me-2"></i>サンプルデータ生成';
+    }
+}
 
 function initializeCharts() {
     // パレート図の初期化
