@@ -9,6 +9,7 @@ require('dotenv').config();
 
 // OCRルートのインポート
 const ocrRoutes = require('./routes/ocr');
+const ocrEnhanceRoutes = require('./routes/ocr-enhance');
 
 // ログ設定
 const logger = winston.createLogger({
@@ -81,6 +82,7 @@ app.get('/health', (req, res) => {
 
 // === OCR API（AWS Textract） ===
 app.use('/ocr', ocrRoutes);
+app.use('/api/ocr', ocrEnhanceRoutes);
 
 // データベース接続テスト
 app.get('/db-test', async (req, res) => {
