@@ -4078,6 +4078,168 @@ app.get('/monitoring/dashboard-summary', async (req, res) => {
     }
 });
 
+// サンプルデータ生成エンドポイント
+app.post('/monitoring/generate-sample-data', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. 既存のモニタリングデータをクリア
+        await client.query('DELETE FROM inventory_snapshots');
+        await client.query('DELETE FROM inspection_performance_hourly');
+        await client.query('DELETE FROM monitoring_alerts WHERE is_acknowledged = FALSE');
+
+        // 2. 製品データを取得
+        const productsResult = await client.query('SELECT id, product_name FROM products LIMIT 10');
+        const products = productsResult.rows;
+
+        if (products.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'No products found. Please add products first.' });
+        }
+
+        // 3. 在庫スナップショットデータ生成（過去30日分）
+        const inventorySnapshots = [];
+        for (let dayOffset = 30; dayOffset >= 0; dayOffset--) {
+            const snapshotDate = new Date();
+            snapshotDate.setDate(snapshotDate.getDate() - dayOffset);
+            const dateStr = snapshotDate.toISOString().split('T')[0];
+
+            for (const product of products) {
+                const baseStock = 100 + Math.floor(Math.random() * 500);
+                const dailyShipments = 5 + Math.floor(Math.random() * 30);
+                const dailyReceipts = dayOffset % 7 === 0 ? 50 + Math.floor(Math.random() * 100) : 0;
+                const quantityOnHand = baseStock + (30 - dayOffset) * 5;
+                const quantityReserved = Math.floor(Math.random() * 50);
+                const quantityAvailable = quantityOnHand - quantityReserved;
+                const turnoverRate = (dailyShipments / Math.max(quantityAvailable, 1) * 30).toFixed(4);
+                const daysOfStock = (quantityAvailable / Math.max(dailyShipments, 1)).toFixed(2);
+
+                inventorySnapshots.push({
+                    date: dateStr,
+                    product_id: product.id,
+                    quantity_on_hand: quantityOnHand,
+                    quantity_reserved: quantityReserved,
+                    quantity_available: quantityAvailable,
+                    daily_shipments: dailyShipments,
+                    daily_receipts: dailyReceipts,
+                    turnover_rate: turnoverRate,
+                    days_of_stock: daysOfStock
+                });
+            }
+        }
+
+        // 在庫スナップショット一括挿入
+        for (const snapshot of inventorySnapshots) {
+            await client.query(`
+                INSERT INTO inventory_snapshots
+                (snapshot_date, product_id, quantity_on_hand, quantity_reserved,
+                 quantity_available, daily_shipments, daily_receipts, turnover_rate, days_of_stock)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `, [
+                snapshot.date, snapshot.product_id, snapshot.quantity_on_hand,
+                snapshot.quantity_reserved, snapshot.quantity_available,
+                snapshot.daily_shipments, snapshot.daily_receipts,
+                snapshot.turnover_rate, snapshot.days_of_stock
+            ]);
+        }
+
+        // 4. 検品パフォーマンスデータ生成（過去7日分、8時間/日）
+        const inspectors = ['田中太郎', '佐藤花子', '鈴木一郎', '高橋美咲'];
+        const performanceData = [];
+
+        for (let dayOffset = 7; dayOffset >= 0; dayOffset--) {
+            for (let hour = 9; hour <= 16; hour++) {
+                const timestamp = new Date();
+                timestamp.setDate(timestamp.getDate() - dayOffset);
+                timestamp.setHours(hour, 0, 0, 0);
+
+                for (const inspector of inspectors) {
+                    const totalInspections = 2 + Math.floor(Math.random() * 8);
+                    const completedInspections = totalInspections - Math.floor(Math.random() * 2);
+                    const failedInspections = totalInspections - completedInspections;
+                    const avgInspectionTime = (5 + Math.random() * 15).toFixed(2);
+                    const totalComponents = totalInspections * (3 + Math.floor(Math.random() * 5));
+
+                    performanceData.push({
+                        timestamp: timestamp.toISOString(),
+                        inspector: inspector,
+                        total: totalInspections,
+                        completed: completedInspections,
+                        failed: failedInspections,
+                        avg_time: avgInspectionTime,
+                        components: totalComponents
+                    });
+                }
+            }
+        }
+
+        // 検品パフォーマンス一括挿入
+        for (const perf of performanceData) {
+            await client.query(`
+                INSERT INTO inspection_performance_hourly
+                (hour_timestamp, inspector_name, total_inspections, completed_inspections,
+                 failed_inspections, avg_inspection_time, total_components_scanned)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `, [
+                perf.timestamp, perf.inspector, perf.total, perf.completed,
+                perf.failed, perf.avg_time, perf.components
+            ]);
+        }
+
+        // 5. モニタリングアラート生成
+        const alertTypes = [
+            { type: 'stockout_risk', severity: 'high', message: '在庫不足リスク: 7日以内に在庫切れの可能性' },
+            { type: 'stockout_risk', severity: 'critical', message: '在庫不足警告: 3日以内に在庫切れの可能性' },
+            { type: 'quality_degradation', severity: 'medium', message: '品質低下検出: 不良率が通常の1.5倍に上昇' },
+            { type: 'performance_drop', severity: 'medium', message: '検品速度低下: 平均検品時間が20%増加' },
+            { type: 'overstocked', severity: 'low', message: '過剰在庫警告: 90日分以上の在庫保有' }
+        ];
+
+        // 製品の一部にアラートを設定（3-5件）
+        const alertCount = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < alertCount; i++) {
+            const alert = alertTypes[i % alertTypes.length];
+            const randomProduct = products[Math.floor(Math.random() * products.length)];
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + 7);
+
+            await client.query(`
+                INSERT INTO monitoring_alerts
+                (alert_type, severity, product_id, alert_message, alert_data, expires_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+                alert.type,
+                alert.severity,
+                randomProduct.id,
+                `${randomProduct.product_name}: ${alert.message}`,
+                JSON.stringify({ product_name: randomProduct.product_name }),
+                expiresAt.toISOString()
+            ]);
+        }
+
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            message: 'モニタリングサンプルデータを生成しました',
+            data: {
+                inventory_snapshots: inventorySnapshots.length,
+                performance_records: performanceData.length,
+                alerts: alertCount,
+                products_used: products.length
+            }
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        logger.error('Error generating monitoring sample data:', error);
+        res.status(500).json({ error: 'Failed to generate sample data', details: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // エラーハンドリング
 app.use((err, req, res, next) => {
     logger.error('Unhandled error:', err);
