@@ -213,11 +213,11 @@
                                     <p class="mb-0 small text-muted">混沌とした情報をグループ化して整理</p>
                                 </div>
                                 <div class="col-auto">
-                                    <button class="btn btn-primary btn-sm me-2">
-                                        <i class="fas fa-plus me-1"></i>カード追加
+                                    <button class="btn btn-outline-secondary btn-sm me-2" onclick="showProjectModal('affinity')">
+                                        <i class="fas fa-folder-open me-1"></i>プロジェクト
                                     </button>
-                                    <button class="btn btn-success btn-sm">
-                                        <i class="fas fa-save me-1"></i>保存
+                                    <button class="btn btn-primary btn-sm" onclick="addAffinityCard()">
+                                        <i class="fas fa-plus me-1"></i>カード追加
                                     </button>
                                 </div>
                             </div>
@@ -226,9 +226,9 @@
                             <div class="canvas-area">
                                 <div class="text-center text-muted py-5">
                                     <i class="fas fa-object-group fa-3x mb-3"></i>
-                                    <p>カードを追加して、グループ化してください</p>
-                                    <button class="btn btn-primary" onclick="addAffinityCard()">
-                                        <i class="fas fa-plus me-2"></i>最初のカードを追加
+                                    <p>プロジェクトを開いて、カードを追加してください</p>
+                                    <button class="btn btn-primary" onclick="showProjectModal('affinity')">
+                                        <i class="fas fa-folder-open me-2"></i>プロジェクトを開く
                                     </button>
                                 </div>
                             </div>
@@ -240,16 +240,28 @@
                 <div class="tool-content d-none" id="relation-content">
                     <div class="tool-card card">
                         <div class="card-header bg-white">
-                            <h4 class="mb-0">
-                                <i class="fas fa-project-diagram text-success me-2"></i>連関図法
-                            </h4>
-                            <p class="mb-0 small text-muted">複雑な因果関係を可視化</p>
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <h4 class="mb-0">
+                                        <i class="fas fa-project-diagram text-success me-2"></i>連関図法
+                                    </h4>
+                                    <p class="mb-0 small text-muted">複雑な因果関係を可視化</p>
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="showProjectModal('relation')">
+                                        <i class="fas fa-folder-open me-1"></i>プロジェクト
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="canvas-area">
                                 <div class="text-center text-muted py-5">
                                     <i class="fas fa-project-diagram fa-3x mb-3"></i>
-                                    <p>準備中: 因果関係図を作成できます</p>
+                                    <p>プロジェクトを開いて、因果関係図を作成してください</p>
+                                    <button class="btn btn-primary" onclick="showProjectModal('relation')">
+                                        <i class="fas fa-folder-open me-2"></i>プロジェクトを開く
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -260,16 +272,28 @@
                 <div class="tool-content d-none" id="systematic-content">
                     <div class="tool-card card">
                         <div class="card-header bg-white">
-                            <h4 class="mb-0">
-                                <i class="fas fa-sitemap text-info me-2"></i>系統図法（ツリー図）
-                            </h4>
-                            <p class="mb-0 small text-muted">目的達成のための手段を階層的に展開</p>
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <h4 class="mb-0">
+                                        <i class="fas fa-sitemap text-info me-2"></i>系統図法（ツリー図）
+                                    </h4>
+                                    <p class="mb-0 small text-muted">目的達成のための手段を階層的に展開</p>
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="showProjectModal('tree')">
+                                        <i class="fas fa-folder-open me-1"></i>プロジェクト
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="canvas-area">
                                 <div class="text-center text-muted py-5">
                                     <i class="fas fa-sitemap fa-3x mb-3"></i>
-                                    <p>準備中: 目的・手段のツリー図を作成できます</p>
+                                    <p>プロジェクトを開いて、目的・手段のツリー図を作成してください</p>
+                                    <button class="btn btn-primary" onclick="showProjectModal('tree')">
+                                        <i class="fas fa-folder-open me-2"></i>プロジェクトを開く
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -280,16 +304,28 @@
                 <div class="tool-content d-none" id="matrix-content">
                     <div class="tool-card card">
                         <div class="card-header bg-white">
-                            <h4 class="mb-0">
-                                <i class="fas fa-table-cells text-warning me-2"></i>マトリックス図法
-                            </h4>
-                            <p class="mb-0 small text-muted">要素間の関係を二元表で整理</p>
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <h4 class="mb-0">
+                                        <i class="fas fa-table-cells text-warning me-2"></i>マトリックス図法
+                                    </h4>
+                                    <p class="mb-0 small text-muted">要素間の関係を二元表で整理</p>
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="showProjectModal('matrix')">
+                                        <i class="fas fa-folder-open me-1"></i>プロジェクト
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="canvas-area">
                                 <div class="text-center text-muted py-5">
                                     <i class="fas fa-table-cells fa-3x mb-3"></i>
-                                    <p>準備中: マトリックス図を作成できます</p>
+                                    <p>プロジェクトを開いて、マトリックス図を作成してください</p>
+                                    <button class="btn btn-primary" onclick="showProjectModal('matrix')">
+                                        <i class="fas fa-folder-open me-2"></i>プロジェクトを開く
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -300,16 +336,28 @@
                 <div class="tool-content d-none" id="arrow-content">
                     <div class="tool-card card">
                         <div class="card-header bg-white">
-                            <h4 class="mb-0">
-                                <i class="fas fa-arrow-right text-danger me-2"></i>アローダイアグラム（PERT図）
-                            </h4>
-                            <p class="mb-0 small text-muted">プロジェクトの最適な日程計画を作成</p>
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <h4 class="mb-0">
+                                        <i class="fas fa-arrow-right text-danger me-2"></i>アローダイアグラム（PERT図）
+                                    </h4>
+                                    <p class="mb-0 small text-muted">プロジェクトの最適な日程計画を作成</p>
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="showProjectModal('arrow')">
+                                        <i class="fas fa-folder-open me-1"></i>プロジェクト
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="canvas-area">
                                 <div class="text-center text-muted py-5">
                                     <i class="fas fa-arrow-right fa-3x mb-3"></i>
-                                    <p>準備中: PERT図を作成できます</p>
+                                    <p>プロジェクトを開いて、PERT図を作成してください</p>
+                                    <button class="btn btn-primary" onclick="showProjectModal('arrow')">
+                                        <i class="fas fa-folder-open me-2"></i>プロジェクトを開く
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -320,16 +368,28 @@
                 <div class="tool-content d-none" id="pdpc-content">
                     <div class="tool-card card">
                         <div class="card-header bg-white">
-                            <h4 class="mb-0">
-                                <i class="fas fa-route text-secondary me-2"></i>PDPC法（過程決定計画図）
-                            </h4>
-                            <p class="mb-0 small text-muted">リスク対策を事前に計画</p>
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <h4 class="mb-0">
+                                        <i class="fas fa-route text-secondary me-2"></i>PDPC法（過程決定計画図）
+                                    </h4>
+                                    <p class="mb-0 small text-muted">リスク対策を事前に計画</p>
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="showProjectModal('pdpc')">
+                                        <i class="fas fa-folder-open me-1"></i>プロジェクト
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="canvas-area">
                                 <div class="text-center text-muted py-5">
                                     <i class="fas fa-route fa-3x mb-3"></i>
-                                    <p>準備中: プロセス決定計画図を作成できます</p>
+                                    <p>プロジェクトを開いて、プロセス決定計画図を作成してください</p>
+                                    <button class="btn btn-primary" onclick="showProjectModal('pdpc')">
+                                        <i class="fas fa-folder-open me-2"></i>プロジェクトを開く
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -340,6 +400,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/new-qc-analysis.js"></script>
     <script>
         // ツール切り替え
         document.querySelectorAll('[data-tool]').forEach(link => {
@@ -354,12 +415,11 @@
                 const tool = this.getAttribute('data-tool');
                 document.querySelectorAll('.tool-content').forEach(c => c.classList.add('d-none'));
                 document.getElementById(`${tool}-content`).classList.remove('d-none');
+
+                // ツールに応じてプロジェクト読み込み
+                currentToolType = tool;
             });
         });
-
-        function addAffinityCard() {
-            alert('親和図法のカード追加機能は開発中です。\n次のフェーズで実装予定です。');
-        }
     </script>
 </body>
 </html>
