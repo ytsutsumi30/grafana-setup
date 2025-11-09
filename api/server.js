@@ -2251,6 +2251,185 @@ function calculateCorrelation(x, y) {
     return denominator === 0 ? 0 : numerator / denominator;
 }
 
+// QCツール用サンプルデータ生成
+app.post('/qc-tools/generate-sample-data', async (req, res) => {
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 既存のサンプルデータを削除
+        await client.query(`
+            DELETE FROM qr_inspection_details WHERE qr_inspection_id IN (
+                SELECT id FROM qr_inspections WHERE inspector_name LIKE 'サンプル%'
+            )
+        `);
+        await client.query(`DELETE FROM qr_inspections WHERE inspector_name LIKE 'サンプル%'`);
+
+        const errorMessages = [
+            '部品欠品',
+            '外観不良',
+            '数量不一致',
+            'QRコード読み取り不可',
+            '梱包不良',
+            '製品破損',
+            'ラベル貼付不良',
+            '仕様違い'
+        ];
+
+        let totalInspections = 0;
+        let totalDetails = 0;
+
+        // 過去30日分のデータを生成
+        for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
+            const inspectionsPerDay = 3 + Math.floor(Math.random() * 7); // 3〜10件/日
+
+            for (let i = 0; i < inspectionsPerDay; i++) {
+                // ランダムに製品と出荷指示を選択
+                const productResult = await client.query('SELECT id FROM products ORDER BY RANDOM() LIMIT 1');
+                const shippingResult = await client.query('SELECT id FROM shipping_instructions ORDER BY RANDOM() LIMIT 1');
+
+                if (productResult.rows.length === 0 || shippingResult.rows.length === 0) {
+                    continue;
+                }
+
+                const productId = productResult.rows[0].id;
+                const shippingInstructionId = shippingResult.rows[0].id;
+
+                // 検品時間をランダムに生成（5〜30分）
+                const inspectionMinutes = 5 + Math.floor(Math.random() * 25);
+
+                // 失敗か成功かをランダムに決定（10%の確率で失敗）
+                const isFailed = Math.random() < 0.1;
+
+                // 製品の総部品数を取得
+                const componentsResult = await client.query(
+                    'SELECT COUNT(*) as count FROM product_components WHERE product_id = $1',
+                    [productId]
+                );
+
+                let totalComponents = parseInt(componentsResult.rows[0].count) || 3;
+                if (totalComponents === 0) totalComponents = 3;
+
+                // スキャンした部品数（失敗の場合は少なめ）
+                const scannedComponents = isFailed
+                    ? totalComponents - (1 + Math.floor(Math.random() * 2))
+                    : totalComponents;
+
+                // 基準日時を計算
+                const baseDate = new Date();
+                baseDate.setDate(baseDate.getDate() - dayOffset);
+                baseDate.setHours(8 + Math.floor(Math.random() * 10), Math.floor(Math.random() * 60), 0, 0);
+
+                const completedDate = new Date(baseDate.getTime() + inspectionMinutes * 60000);
+
+                // QR検品レコードを挿入
+                const inspectionResult = await client.query(`
+                    INSERT INTO qr_inspections (
+                        shipping_instruction_id,
+                        inspector_name,
+                        product_id,
+                        total_components,
+                        scanned_components,
+                        passed_quantity,
+                        status,
+                        created_at,
+                        completed_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    RETURNING id
+                `, [
+                    shippingInstructionId,
+                    'サンプル検品員' + (1 + Math.floor(Math.random() * 5)),
+                    productId,
+                    totalComponents,
+                    scannedComponents,
+                    isFailed ? 0 : 1,
+                    isFailed ? 'failed' : 'completed',
+                    baseDate,
+                    completedDate
+                ]);
+
+                const inspectionId = inspectionResult.rows[0].id;
+                totalInspections++;
+
+                // 部品を取得
+                const componentsListResult = await client.query(
+                    'SELECT id FROM product_components WHERE product_id = $1 LIMIT $2',
+                    [productId, totalComponents]
+                );
+
+                // 検品詳細データを挿入
+                for (let j = 0; j < totalComponents; j++) {
+                    const componentId = componentsListResult.rows[j]?.id || componentsListResult.rows[0]?.id;
+
+                    if (!componentId) continue;
+
+                    const scanDate = new Date(baseDate.getTime() + j * 30000); // 30秒間隔
+
+                    // 失敗検品の場合、一部をエラーとして記録
+                    if (isFailed && j >= scannedComponents) {
+                        const errorMsg = errorMessages[Math.floor(Math.random() * errorMessages.length)];
+
+                        await client.query(`
+                            INSERT INTO qr_inspection_details (
+                                qr_inspection_id,
+                                product_component_id,
+                                qr_code,
+                                status,
+                                error_message,
+                                scanned_at
+                            ) VALUES ($1, $2, $3, $4, $5, $6)
+                        `, [
+                            inspectionId,
+                            componentId,
+                            'QR-ERROR-' + j,
+                            'error',
+                            errorMsg,
+                            scanDate
+                        ]);
+                    } else {
+                        // 正常スキャン
+                        await client.query(`
+                            INSERT INTO qr_inspection_details (
+                                qr_inspection_id,
+                                product_component_id,
+                                qr_code,
+                                status,
+                                scanned_at
+                            ) VALUES ($1, $2, $3, $4, $5)
+                        `, [
+                            inspectionId,
+                            componentId,
+                            'QR-OK-' + j,
+                            'scanned',
+                            scanDate
+                        ]);
+                    }
+
+                    totalDetails++;
+                }
+            }
+        }
+
+        await client.query('COMMIT');
+
+        logger.info(`Sample data generated: ${totalInspections} inspections, ${totalDetails} details`);
+
+        res.json({
+            success: true,
+            message: 'サンプルデータの生成が完了しました',
+            total_inspections: totalInspections,
+            total_details: totalDetails
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        logger.error('Error generating sample data:', error);
+        res.status(500).json({ error: 'サンプルデータの生成に失敗しました: ' + error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // === 在庫管理API ===
 
 // 在庫一覧取得
