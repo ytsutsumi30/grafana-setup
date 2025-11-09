@@ -327,15 +327,233 @@ app.get('/shipping-locations', async (req, res) => {
     }
 });
 
+// 出荷場所詳細取得
+app.get('/shipping-locations/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            'SELECT * FROM shipping_locations WHERE id = $1',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping location not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error fetching shipping location:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷場所登録
+app.post('/shipping-locations', async (req, res) => {
+    try {
+        const { location_code, location_name, address, phone, contact_person } = req.body;
+
+        // バリデーション
+        if (!location_code || !location_name) {
+            return res.status(400).json({ error: 'Location code and name are required' });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO shipping_locations
+             (location_code, location_name, address, phone, contact_person)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [location_code, location_name, address || null, phone || null, contact_person || null]
+        );
+
+        logger.info('Shipping location created:', result.rows[0]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error creating shipping location:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Location code already exists' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷場所更新
+app.put('/shipping-locations/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { location_code, location_name, address, phone, contact_person } = req.body;
+
+        // バリデーション
+        if (!location_code || !location_name) {
+            return res.status(400).json({ error: 'Location code and name are required' });
+        }
+
+        const result = await pool.query(
+            `UPDATE shipping_locations
+             SET location_code = $1, location_name = $2, address = $3,
+                 phone = $4, contact_person = $5
+             WHERE id = $6
+             RETURNING *`,
+            [location_code, location_name, address || null, phone || null, contact_person || null, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping location not found' });
+        }
+
+        logger.info('Shipping location updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating shipping location:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Location code already exists' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷場所削除
+app.delete('/shipping-locations/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await pool.query(
+            'DELETE FROM shipping_locations WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping location not found' });
+        }
+
+        logger.info('Shipping location deleted:', result.rows[0]);
+        res.json({ message: 'Shipping location deleted successfully' });
+    } catch (error) {
+        logger.error('Error deleting shipping location:', error);
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(409).json({ error: 'Cannot delete: location is referenced by shipping instructions' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 app.get('/delivery-locations', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT * FROM delivery_locations 
+            SELECT * FROM delivery_locations
             ORDER BY location_code
         `);
         res.json(result.rows);
     } catch (error) {
         logger.error('Error fetching delivery locations:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 納入場所詳細取得
+app.get('/delivery-locations/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            'SELECT * FROM delivery_locations WHERE id = $1',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Delivery location not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error fetching delivery location:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 納入場所登録
+app.post('/delivery-locations', async (req, res) => {
+    try {
+        const { location_code, location_name, address, phone, contact_person, delivery_method } = req.body;
+
+        // バリデーション
+        if (!location_code || !location_name) {
+            return res.status(400).json({ error: 'Location code and name are required' });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO delivery_locations
+             (location_code, location_name, address, phone, contact_person, delivery_method)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [location_code, location_name, address || null, phone || null, contact_person || null, delivery_method || '宅配便']
+        );
+
+        logger.info('Delivery location created:', result.rows[0]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error creating delivery location:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Location code already exists' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 納入場所更新
+app.put('/delivery-locations/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { location_code, location_name, address, phone, contact_person, delivery_method } = req.body;
+
+        // バリデーション
+        if (!location_code || !location_name) {
+            return res.status(400).json({ error: 'Location code and name are required' });
+        }
+
+        const result = await pool.query(
+            `UPDATE delivery_locations
+             SET location_code = $1, location_name = $2, address = $3,
+                 phone = $4, contact_person = $5, delivery_method = $6
+             WHERE id = $7
+             RETURNING *`,
+            [location_code, location_name, address || null, phone || null, contact_person || null, delivery_method || '宅配便', id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Delivery location not found' });
+        }
+
+        logger.info('Delivery location updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating delivery location:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Location code already exists' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 納入場所削除
+app.delete('/delivery-locations/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await pool.query(
+            'DELETE FROM delivery_locations WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Delivery location not found' });
+        }
+
+        logger.info('Delivery location deleted:', result.rows[0]);
+        res.json({ message: 'Delivery location deleted successfully' });
+    } catch (error) {
+        logger.error('Error deleting delivery location:', error);
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(409).json({ error: 'Cannot delete: location is referenced by shipping instructions' });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -680,6 +898,150 @@ app.get('/shipping-inspections', async (req, res) => {
         res.json(result.rows);
     } catch (error) {
         logger.error('Error fetching shipping inspections:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// === 製品構成部品API ===
+
+// 製品構成部品一覧取得（全件）
+app.get('/product-components', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT pc.*, p.product_code, p.product_name
+            FROM product_components pc
+            JOIN products p ON pc.product_id = p.id
+            ORDER BY p.product_code,
+                CASE pc.component_type
+                    WHEN 'main' THEN 1
+                    WHEN 'accessory' THEN 2
+                    WHEN 'manual' THEN 3
+                    WHEN 'warranty' THEN 4
+                    ELSE 5
+                END, pc.component_name
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        logger.error('Error fetching product components:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 製品構成部品詳細取得
+app.get('/product-components/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(`
+            SELECT pc.*, p.product_code, p.product_name
+            FROM product_components pc
+            JOIN products p ON pc.product_id = p.id
+            WHERE pc.id = $1
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Product component not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error fetching product component:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 製品構成部品登録
+app.post('/product-components', async (req, res) => {
+    try {
+        const { product_id, component_type, component_name, qr_code, is_required } = req.body;
+
+        // バリデーション
+        if (!product_id || !component_type || !component_name || !qr_code) {
+            return res.status(400).json({
+                error: 'Product ID, component type, name, and QR code are required'
+            });
+        }
+
+        const result = await pool.query(`
+            INSERT INTO product_components
+            (product_id, component_type, component_name, qr_code, is_required)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        `, [product_id, component_type, component_name, qr_code, is_required !== false]);
+
+        logger.info('Product component created:', result.rows[0]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error creating product component:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'QR code already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Product not found' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 製品構成部品更新
+app.put('/product-components/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { product_id, component_type, component_name, qr_code, is_required } = req.body;
+
+        // バリデーション
+        if (!product_id || !component_type || !component_name || !qr_code) {
+            return res.status(400).json({
+                error: 'Product ID, component type, name, and QR code are required'
+            });
+        }
+
+        const result = await pool.query(`
+            UPDATE product_components
+            SET product_id = $1, component_type = $2, component_name = $3,
+                qr_code = $4, is_required = $5, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $6
+            RETURNING *
+        `, [product_id, component_type, component_name, qr_code, is_required !== false, id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Product component not found' });
+        }
+
+        logger.info('Product component updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating product component:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'QR code already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Product not found' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 製品構成部品削除
+app.delete('/product-components/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await pool.query(
+            'DELETE FROM product_components WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Product component not found' });
+        }
+
+        logger.info('Product component deleted:', result.rows[0]);
+        res.json({ message: 'Product component deleted successfully' });
+    } catch (error) {
+        logger.error('Error deleting product component:', error);
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(409).json({ error: 'Cannot delete: component is referenced by inspection records' });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1117,6 +1479,130 @@ app.get('/reports/dashboard-stats', async (req, res) => {
         });
     } catch (error) {
         logger.error('Error fetching dashboard stats:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// === 在庫管理API ===
+
+// 在庫一覧取得
+app.get('/inventory', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT i.*, p.product_code, p.product_name, p.category
+            FROM inventory i
+            JOIN products p ON i.product_id = p.id
+            ORDER BY p.product_code
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        logger.error('Error fetching inventory:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 在庫詳細取得
+app.get('/inventory/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(`
+            SELECT i.*, p.product_code, p.product_name, p.category
+            FROM inventory i
+            JOIN products p ON i.product_id = p.id
+            WHERE i.id = $1
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Inventory record not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error fetching inventory:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 在庫調整（現在庫・引当在庫の更新）
+app.patch('/inventory/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { current_stock, reserved_stock, location } = req.body;
+
+        // 少なくとも1つのフィールドが必要
+        if (current_stock === undefined && reserved_stock === undefined && location === undefined) {
+            return res.status(400).json({
+                error: 'At least one field (current_stock, reserved_stock, or location) must be provided'
+            });
+        }
+
+        // 負の値チェック
+        if ((current_stock !== undefined && current_stock < 0) ||
+            (reserved_stock !== undefined && reserved_stock < 0)) {
+            return res.status(400).json({
+                error: 'Stock values cannot be negative'
+            });
+        }
+
+        // 動的にUPDATE文を構築
+        const updates = [];
+        const values = [];
+        let paramIndex = 1;
+
+        if (current_stock !== undefined) {
+            updates.push(`current_stock = $${paramIndex++}`);
+            values.push(current_stock);
+        }
+        if (reserved_stock !== undefined) {
+            updates.push(`reserved_stock = $${paramIndex++}`);
+            values.push(reserved_stock);
+        }
+        if (location !== undefined) {
+            updates.push(`location = $${paramIndex++}`);
+            values.push(location);
+        }
+        updates.push(`last_updated = CURRENT_TIMESTAMP`);
+        values.push(id);
+
+        const query = `
+            UPDATE inventory
+            SET ${updates.join(', ')}
+            WHERE id = $${paramIndex}
+            RETURNING *
+        `;
+
+        const result = await pool.query(query, values);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Inventory record not found' });
+        }
+
+        logger.info('Inventory updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating inventory:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 製品IDで在庫取得
+app.get('/inventory/by-product/:productId', async (req, res) => {
+    try {
+        const { productId } = req.params;
+        const result = await pool.query(`
+            SELECT i.*, p.product_code, p.product_name, p.category
+            FROM inventory i
+            JOIN products p ON i.product_id = p.id
+            WHERE i.product_id = $1
+        `, [productId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Inventory record not found for this product' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error fetching inventory by product:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
