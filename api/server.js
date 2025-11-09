@@ -5,7 +5,13 @@ const rateLimit = require('express-rate-limit');
 const winston = require('winston');
 const { Pool } = require('pg');
 const Joi = require('joi');
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const util = require('util');
 require('dotenv').config();
+
+const execPromise = util.promisify(exec);
 
 // OCRルートのインポート
 const ocrRoutes = require('./routes/ocr');
@@ -2011,6 +2017,216 @@ app.get('/inventory/by-product/:productId', async (req, res) => {
         res.json(result.rows[0]);
     } catch (error) {
         logger.error('Error fetching inventory by product:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// === データベース管理API ===
+
+// データベース統計情報取得
+app.get('/database/stats', async (req, res) => {
+    try {
+        // テーブル一覧と行数
+        const tablesResult = await pool.query(`
+            SELECT
+                schemaname,
+                tablename,
+                pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
+            FROM pg_tables
+            WHERE schemaname = 'public'
+            ORDER BY tablename
+        `);
+
+        // 各テーブルの行数を取得
+        const tables = [];
+        for (const table of tablesResult.rows) {
+            const countResult = await pool.query(`SELECT COUNT(*) as count FROM ${table.tablename}`);
+            tables.push({
+                name: table.tablename,
+                size: table.size,
+                row_count: parseInt(countResult.rows[0].count)
+            });
+        }
+
+        // データベース全体のサイズ
+        const dbSizeResult = await pool.query(`
+            SELECT pg_size_pretty(pg_database_size(current_database())) as size
+        `);
+
+        res.json({
+            database_size: dbSizeResult.rows[0].size,
+            table_count: tables.length,
+            tables: tables
+        });
+    } catch (error) {
+        logger.error('Error fetching database stats:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// バックアップ作成
+app.post('/database/backup', async (req, res) => {
+    try {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' +
+                         new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+        const backupDir = '/app/backups';
+        const backupFile = `backup_${timestamp}.sql`;
+        const backupPath = path.join(backupDir, backupFile);
+
+        // バックアップディレクトリが存在しない場合は作成
+        if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, { recursive: true });
+        }
+
+        const dbUser = process.env.DB_USER || 'production_user';
+        const dbName = process.env.DB_NAME || 'production_db';
+        const dbHost = process.env.DB_HOST || 'postgres';
+        const dbPassword = process.env.DB_PASSWORD || 'production_password';
+
+        // pg_dumpコマンドを実行
+        const command = `PGPASSWORD="${dbPassword}" pg_dump -h ${dbHost} -U ${dbUser} -d ${dbName} > ${backupPath}`;
+
+        await execPromise(command);
+
+        // ファイルサイズを取得
+        const stats = fs.statSync(backupPath);
+        const fileSizeInBytes = stats.size;
+        const fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toFixed(2);
+
+        logger.info('Database backup created:', backupFile);
+
+        res.json({
+            success: true,
+            message: 'バックアップが正常に作成されました',
+            filename: backupFile,
+            size: `${fileSizeInMB} MB`,
+            created_at: new Date().toISOString()
+        });
+    } catch (error) {
+        logger.error('Error creating backup:', error);
+        res.status(500).json({
+            success: false,
+            error: 'バックアップの作成に失敗しました',
+            details: error.message
+        });
+    }
+});
+
+// バックアップ一覧取得
+app.get('/database/backups', async (req, res) => {
+    try {
+        const backupDir = '/app/backups';
+
+        // ディレクトリが存在しない場合は空配列を返す
+        if (!fs.existsSync(backupDir)) {
+            return res.json([]);
+        }
+
+        const files = fs.readdirSync(backupDir)
+            .filter(file => file.endsWith('.sql'))
+            .map(file => {
+                const filePath = path.join(backupDir, file);
+                const stats = fs.statSync(filePath);
+                return {
+                    filename: file,
+                    size: `${(stats.size / (1024 * 1024)).toFixed(2)} MB`,
+                    created_at: stats.mtime,
+                    path: filePath
+                };
+            })
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        res.json(files);
+    } catch (error) {
+        logger.error('Error fetching backups:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// === システムログAPI ===
+
+// ログファイル一覧取得
+app.get('/logs/files', async (req, res) => {
+    try {
+        const logDir = '/app';
+        const logFiles = ['error.log', 'combined.log'];
+
+        const files = logFiles
+            .filter(file => fs.existsSync(path.join(logDir, file)))
+            .map(file => {
+                const filePath = path.join(logDir, file);
+                const stats = fs.statSync(filePath);
+                return {
+                    filename: file,
+                    size: `${(stats.size / 1024).toFixed(2)} KB`,
+                    modified_at: stats.mtime,
+                    path: filePath
+                };
+            });
+
+        res.json(files);
+    } catch (error) {
+        logger.error('Error fetching log files:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ログ内容取得
+app.get('/logs/content/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params;
+        const { lines = 100, level } = req.query;
+
+        // セキュリティ: ファイル名のバリデーション
+        const allowedFiles = ['error.log', 'combined.log'];
+        if (!allowedFiles.includes(filename)) {
+            return res.status(400).json({ error: 'Invalid log file' });
+        }
+
+        const logPath = path.join('/app', filename);
+
+        if (!fs.existsSync(logPath)) {
+            return res.status(404).json({ error: 'Log file not found' });
+        }
+
+        // ファイルを読み込み
+        const content = fs.readFileSync(logPath, 'utf8');
+        const allLines = content.split('\n').filter(line => line.trim());
+
+        // レベルフィルタリング
+        let filteredLines = allLines;
+        if (level) {
+            filteredLines = allLines.filter(line => {
+                try {
+                    const parsed = JSON.parse(line);
+                    return parsed.level === level;
+                } catch (e) {
+                    return line.toLowerCase().includes(level.toLowerCase());
+                }
+            });
+        }
+
+        // 最新N行を取得
+        const recentLines = filteredLines.slice(-parseInt(lines));
+
+        // JSON形式でパース試行
+        const parsedLines = recentLines.map(line => {
+            try {
+                return JSON.parse(line);
+            } catch (e) {
+                return { raw: line };
+            }
+        }).reverse(); // 新しい順に
+
+        res.json({
+            filename,
+            total_lines: allLines.length,
+            filtered_lines: filteredLines.length,
+            returned_lines: parsedLines.length,
+            logs: parsedLines
+        });
+    } catch (error) {
+        logger.error('Error reading log file:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

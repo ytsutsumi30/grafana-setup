@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データベース管理</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .page-header {
+            background: linear-gradient(135deg, #6f42c1, #5a32a0);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+        .card {
+            border: none;
+            border-radius: 1rem;
+            box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
+        }
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #6f42c1;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .loading-overlay.active {
+            display: flex;
+        }
+        .backup-item {
+            border-left: 4px solid #6f42c1;
+        }
+    </style>
+</head>
+<body>
+    <!-- ローディングオーバーレイ -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <!-- ページヘッダー -->
+    <div class="page-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1><i class="fas fa-database me-2"></i>データベース管理</h1>
+                    <p class="mb-0">データベースのバックアップと統計情報</p>
+                </div>
+                <div class="col-auto">
+                    <a href="maintenance.html" class="btn btn-light btn-lg">
+                        <i class="fas fa-arrow-left me-2"></i>メンテナンスメニューに戻る
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <div class="container mb-5">
+        <!-- 統計情報 -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-value" id="databaseSize">-</div>
+                    <div class="stat-label">データベースサイズ</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-value" id="tableCount">-</div>
+                    <div class="stat-label">テーブル数</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-value" id="totalRecords">-</div>
+                    <div class="stat-label">総レコード数</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- バックアップセクション -->
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card">
+                    <div class="card-header bg-white">
+                        <div class="row align-items-center">
+                            <div class="col">
+                                <h5 class="mb-0"><i class="fas fa-save me-2"></i>バックアップ</h5>
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-primary" onclick="createBackup()">
+                                    <i class="fas fa-plus-circle me-2"></i>新規バックアップ作成
+                                </button>
+                                <button class="btn btn-outline-secondary ms-2" onclick="loadBackups()">
+                                    <i class="fas fa-sync-alt me-2"></i>更新
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="backupsContainer">
+                            <div class="text-center py-5">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-3 text-muted">バックアップ一覧を読み込んでいます...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- テーブル統計 -->
+        <div class="row">
+            <div class="col">
+                <div class="card">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0"><i class="fas fa-table me-2"></i>テーブル統計</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>テーブル名</th>
+                                        <th>レコード数</th>
+                                        <th>サイズ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablesTableBody">
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-5">
+                                            <div class="spinner-border" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-3">データを読み込んでいます...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const API_BASE_URL = '/api';
+
+        // ページ読み込み時にデータ取得
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadStats();
+            await loadBackups();
+        });
+
+        // ローディング表示制御
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.add('active');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('active');
+        }
+
+        // 統計情報取得
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/database/stats`);
+                if (!response.ok) throw new Error('統計情報の取得に失敗しました');
+
+                const stats = await response.json();
+
+                // サマリー表示
+                document.getElementById('databaseSize').textContent = stats.database_size;
+                document.getElementById('tableCount').textContent = stats.table_count;
+
+                const totalRecords = stats.tables.reduce((sum, table) => sum + table.row_count, 0);
+                document.getElementById('totalRecords').textContent = totalRecords.toLocaleString();
+
+                // テーブル一覧表示
+                renderTablesTable(stats.tables);
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                showError('統計情報の取得に失敗しました');
+            }
+        }
+
+        // テーブル統計表示
+        function renderTablesTable(tables) {
+            const tbody = document.getElementById('tablesTableBody');
+
+            if (tables.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="text-center text-muted py-5">
+                            <p>テーブルがありません</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = tables.map(table => `
+                <tr>
+                    <td><code>${escapeHtml(table.name)}</code></td>
+                    <td><strong>${table.row_count.toLocaleString()}</strong> レコード</td>
+                    <td>${escapeHtml(table.size)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // バックアップ一覧取得
+        async function loadBackups() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/database/backups`);
+                if (!response.ok) throw new Error('バックアップ一覧の取得に失敗しました');
+
+                const backups = await response.json();
+                renderBackups(backups);
+            } catch (error) {
+                console.error('Error loading backups:', error);
+                document.getElementById('backupsContainer').innerHTML = `
+                    <div class="text-center text-danger py-5">
+                        <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // バックアップ表示
+        function renderBackups(backups) {
+            const container = document.getElementById('backupsContainer');
+
+            if (backups.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted py-5">
+                        <i class="fas fa-inbox fa-3x mb-3"></i>
+                        <p>バックアップがありません</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = backups.map(backup => {
+                const date = new Date(backup.created_at).toLocaleString('ja-JP');
+                return `
+                    <div class="card backup-item mb-3">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <h6 class="mb-1"><i class="fas fa-file-archive me-2"></i>${escapeHtml(backup.filename)}</h6>
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>${date}
+                                        <span class="ms-3"><i class="fas fa-hdd me-1"></i>${escapeHtml(backup.size)}</span>
+                                    </small>
+                                </div>
+                                <div class="col-auto">
+                                    <span class="badge bg-success">完了</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // バックアップ作成
+        async function createBackup() {
+            if (!confirm('データベースのバックアップを作成しますか？\n\n処理には数秒～数分かかる場合があります。')) {
+                return;
+            }
+
+            showLoading();
+            try {
+                const response = await fetch(`${API_BASE_URL}/database/backup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'バックアップの作成に失敗しました');
+                }
+
+                const result = await response.json();
+
+                showSuccess(`バックアップを作成しました\nファイル名: ${result.filename}\nサイズ: ${result.size}`);
+
+                // 一覧を再読み込み
+                await loadBackups();
+            } catch (error) {
+                console.error('Error creating backup:', error);
+                showError(error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 成功メッセージ表示
+        function showSuccess(message) {
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alert.style.zIndex = '10000';
+            alert.style.whiteSpace = 'pre-line';
+            alert.innerHTML = `
+                <i class="fas fa-check-circle me-2"></i>${escapeHtml(message)}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // エラーメッセージ表示
+        function showError(message) {
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alert.style.zIndex = '10000';
+            alert.innerHTML = `
+                <i class="fas fa-exclamation-circle me-2"></i>${escapeHtml(message)}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // HTMLエスケープ
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, m => map[m]);
+        }
+    </script>
+</body>
+</html>
