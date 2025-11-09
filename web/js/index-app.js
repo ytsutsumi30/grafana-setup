@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeModals();
     initializeEventListeners();
     loadShipments();
+    loadDailyStats();
 });
 
 function initializeModals() {
@@ -210,6 +211,47 @@ async function loadShipments() {
                     <small class="text-muted">${error.message}</small>
                 </div>
             `;
+        }
+    }
+}
+
+async function loadDailyStats() {
+    const completedElement = document.getElementById('stat-completed');
+    const inProgressElement = document.getElementById('stat-in-progress');
+    const passRateElement = document.getElementById('stat-pass-rate');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/reports/daily-inspection-stats`);
+        if (!response.ok) {
+            throw new Error(`統計情報の取得に失敗しました (HTTP ${response.status})`);
+        }
+
+        const stats = await response.json();
+
+        if (completedElement) {
+            completedElement.textContent = stats.completed_today || 0;
+        }
+
+        if (inProgressElement) {
+            inProgressElement.textContent = stats.in_progress || 0;
+        }
+
+        if (passRateElement) {
+            const passRate = stats.pass_rate_today || 0;
+            passRateElement.textContent = `${passRate.toFixed(1)}%`;
+        }
+    } catch (error) {
+        console.error('loadDailyStats error:', error);
+
+        // エラー時はデフォルト値を表示
+        if (completedElement) {
+            completedElement.textContent = '-';
+        }
+        if (inProgressElement) {
+            inProgressElement.textContent = '-';
+        }
+        if (passRateElement) {
+            passRateElement.textContent = '-';
         }
     }
 }
