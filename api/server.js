@@ -5,7 +5,13 @@ const rateLimit = require('express-rate-limit');
 const winston = require('winston');
 const { Pool } = require('pg');
 const Joi = require('joi');
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const util = require('util');
 require('dotenv').config();
+
+const execPromise = util.promisify(exec);
 
 // OCRルートのインポート
 const ocrRoutes = require('./routes/ocr');
@@ -311,6 +317,234 @@ app.delete('/products/:id', async (req, res) => {
         }
     } catch (error) {
         logger.error('Error deleting product:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// === 生産計画API ===
+
+// 生産計画一覧取得
+app.get('/production-plans', async (req, res) => {
+    try {
+        const { status } = req.query;
+
+        let query = `
+            SELECT pp.*, p.product_code, p.product_name
+            FROM production_plans pp
+            JOIN products p ON pp.product_id = p.id
+        `;
+        const params = [];
+
+        if (status) {
+            query += ' WHERE pp.status = $1';
+            params.push(status);
+        }
+
+        query += ' ORDER BY pp.planned_start_date DESC, pp.created_at DESC';
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        logger.error('Error fetching production plans:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 生産計画詳細取得
+app.get('/production-plans/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(`
+            SELECT pp.*, p.product_code, p.product_name
+            FROM production_plans pp
+            JOIN products p ON pp.product_id = p.id
+            WHERE pp.id = $1
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Production plan not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error fetching production plan:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 生産計画登録
+app.post('/production-plans', async (req, res) => {
+    try {
+        const {
+            plan_id,
+            product_id,
+            planned_quantity,
+            planned_start_date,
+            planned_end_date,
+            status
+        } = req.body;
+
+        // バリデーション
+        if (!plan_id || !product_id || !planned_quantity) {
+            return res.status(400).json({
+                error: 'Plan ID, product ID, and planned quantity are required'
+            });
+        }
+
+        if (planned_quantity <= 0) {
+            return res.status(400).json({
+                error: 'Planned quantity must be greater than 0'
+            });
+        }
+
+        // 日付の妥当性チェック
+        if (planned_start_date && planned_end_date) {
+            const startDate = new Date(planned_start_date);
+            const endDate = new Date(planned_end_date);
+            if (endDate < startDate) {
+                return res.status(400).json({
+                    error: 'End date must be after start date'
+                });
+            }
+        }
+
+        const result = await pool.query(`
+            INSERT INTO production_plans
+            (plan_id, product_id, planned_quantity, planned_start_date, planned_end_date, status)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        `, [
+            plan_id,
+            product_id,
+            planned_quantity,
+            planned_start_date || null,
+            planned_end_date || null,
+            status || 'planned'
+        ]);
+
+        logger.info('Production plan created:', result.rows[0]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error creating production plan:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Plan ID already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Invalid product ID' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 生産計画更新
+app.put('/production-plans/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            plan_id,
+            product_id,
+            planned_quantity,
+            planned_start_date,
+            planned_end_date,
+            status
+        } = req.body;
+
+        // バリデーション
+        if (!plan_id || !product_id || !planned_quantity) {
+            return res.status(400).json({
+                error: 'Plan ID, product ID, and planned quantity are required'
+            });
+        }
+
+        if (planned_quantity <= 0) {
+            return res.status(400).json({
+                error: 'Planned quantity must be greater than 0'
+            });
+        }
+
+        // 日付の妥当性チェック
+        if (planned_start_date && planned_end_date) {
+            const startDate = new Date(planned_start_date);
+            const endDate = new Date(planned_end_date);
+            if (endDate < startDate) {
+                return res.status(400).json({
+                    error: 'End date must be after start date'
+                });
+            }
+        }
+
+        const result = await pool.query(`
+            UPDATE production_plans
+            SET plan_id = $1, product_id = $2, planned_quantity = $3,
+                planned_start_date = $4, planned_end_date = $5, status = $6,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $7
+            RETURNING *
+        `, [
+            plan_id,
+            product_id,
+            planned_quantity,
+            planned_start_date || null,
+            planned_end_date || null,
+            status || 'planned',
+            id
+        ]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Production plan not found' });
+        }
+
+        logger.info('Production plan updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating production plan:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Plan ID already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Invalid product ID' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 生産計画削除
+app.delete('/production-plans/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 関連する生産実績の確認
+        const relatedRecords = await pool.query(`
+            SELECT COUNT(*) as count
+            FROM production_records
+            WHERE plan_id = $1
+        `, [id]);
+
+        const recordCount = parseInt(relatedRecords.rows[0].count);
+
+        if (recordCount > 0) {
+            return res.status(409).json({
+                error: '関連する生産実績が存在するため削除できません',
+                production_records: recordCount
+            });
+        }
+
+        const result = await pool.query(
+            'DELETE FROM production_plans WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Production plan not found' });
+        }
+
+        logger.info('Production plan deleted:', result.rows[0]);
+        res.json({ message: 'Production plan deleted successfully' });
+    } catch (error) {
+        logger.error('Error deleting production plan:', error);
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(409).json({ error: 'Cannot delete: production plan is referenced by other records' });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -665,6 +899,186 @@ app.get('/shipping-instructions/:id', async (req, res) => {
         res.json(result.rows[0]);
     } catch (error) {
         logger.error('Error fetching shipping instruction:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷指示登録
+app.post('/shipping-instructions', async (req, res) => {
+    try {
+        const {
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date,
+            shipping_location_id,
+            delivery_location_id,
+            customer_name,
+            priority,
+            status,
+            tracking_number,
+            notes
+        } = req.body;
+
+        // バリデーション
+        if (!instruction_id || !product_id || !quantity) {
+            return res.status(400).json({
+                error: 'Instruction ID, product ID, and quantity are required'
+            });
+        }
+
+        if (quantity <= 0) {
+            return res.status(400).json({
+                error: 'Quantity must be greater than 0'
+            });
+        }
+
+        const result = await pool.query(`
+            INSERT INTO shipping_instructions
+            (instruction_id, product_id, quantity, shipping_date,
+             shipping_location_id, delivery_location_id, customer_name,
+             priority, status, tracking_number, notes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *
+        `, [
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date || null,
+            shipping_location_id || null,
+            delivery_location_id || null,
+            customer_name || null,
+            priority || 'normal',
+            status || 'pending',
+            tracking_number || null,
+            notes || null
+        ]);
+
+        logger.info('Shipping instruction created:', result.rows[0]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error creating shipping instruction:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Instruction ID already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Invalid product, shipping location, or delivery location ID' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷指示更新
+app.put('/shipping-instructions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date,
+            shipping_location_id,
+            delivery_location_id,
+            customer_name,
+            priority,
+            status,
+            tracking_number,
+            notes
+        } = req.body;
+
+        // バリデーション
+        if (!instruction_id || !product_id || !quantity) {
+            return res.status(400).json({
+                error: 'Instruction ID, product ID, and quantity are required'
+            });
+        }
+
+        if (quantity <= 0) {
+            return res.status(400).json({
+                error: 'Quantity must be greater than 0'
+            });
+        }
+
+        const result = await pool.query(`
+            UPDATE shipping_instructions
+            SET instruction_id = $1, product_id = $2, quantity = $3,
+                shipping_date = $4, shipping_location_id = $5,
+                delivery_location_id = $6, customer_name = $7,
+                priority = $8, status = $9, tracking_number = $10,
+                notes = $11, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $12
+            RETURNING *
+        `, [
+            instruction_id,
+            product_id,
+            quantity,
+            shipping_date || null,
+            shipping_location_id || null,
+            delivery_location_id || null,
+            customer_name || null,
+            priority || 'normal',
+            status || 'pending',
+            tracking_number || null,
+            notes || null,
+            id
+        ]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        logger.info('Shipping instruction updated:', result.rows[0]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        logger.error('Error updating shipping instruction:', error);
+        if (error.code === '23505') { // Unique violation
+            return res.status(409).json({ error: 'Instruction ID already exists' });
+        }
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(400).json({ error: 'Invalid product, shipping location, or delivery location ID' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 出荷指示削除
+app.delete('/shipping-instructions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 関連する検品データの確認
+        const relatedRecords = await pool.query(`
+            SELECT
+                (SELECT COUNT(*) FROM shipping_inspections WHERE shipping_instruction_id = $1) as shipping_inspections,
+                (SELECT COUNT(*) FROM qr_inspections WHERE shipping_instruction_id = $1) as qr_inspections
+        `, [id]);
+
+        const relations = relatedRecords.rows[0];
+        const hasRelations = Object.values(relations).some(count => parseInt(count) > 0);
+
+        if (hasRelations) {
+            return res.status(409).json({
+                error: '関連する検品データが存在するため削除できません',
+                relations: relations
+            });
+        }
+
+        const result = await pool.query(
+            'DELETE FROM shipping_instructions WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        logger.info('Shipping instruction deleted:', result.rows[0]);
+        res.json({ message: 'Shipping instruction deleted successfully' });
+    } catch (error) {
+        logger.error('Error deleting shipping instruction:', error);
+        if (error.code === '23503') { // Foreign key violation
+            return res.status(409).json({ error: 'Cannot delete: shipping instruction is referenced by other records' });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1605,6 +2019,216 @@ app.get('/inventory/by-product/:productId', async (req, res) => {
         res.json(result.rows[0]);
     } catch (error) {
         logger.error('Error fetching inventory by product:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// === データベース管理API ===
+
+// データベース統計情報取得
+app.get('/database/stats', async (req, res) => {
+    try {
+        // テーブル一覧と行数
+        const tablesResult = await pool.query(`
+            SELECT
+                schemaname,
+                tablename,
+                pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
+            FROM pg_tables
+            WHERE schemaname = 'public'
+            ORDER BY tablename
+        `);
+
+        // 各テーブルの行数を取得
+        const tables = [];
+        for (const table of tablesResult.rows) {
+            const countResult = await pool.query(`SELECT COUNT(*) as count FROM ${table.tablename}`);
+            tables.push({
+                name: table.tablename,
+                size: table.size,
+                row_count: parseInt(countResult.rows[0].count)
+            });
+        }
+
+        // データベース全体のサイズ
+        const dbSizeResult = await pool.query(`
+            SELECT pg_size_pretty(pg_database_size(current_database())) as size
+        `);
+
+        res.json({
+            database_size: dbSizeResult.rows[0].size,
+            table_count: tables.length,
+            tables: tables
+        });
+    } catch (error) {
+        logger.error('Error fetching database stats:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// バックアップ作成
+app.post('/database/backup', async (req, res) => {
+    try {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' +
+                         new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+        const backupDir = '/app/backups';
+        const backupFile = `backup_${timestamp}.sql`;
+        const backupPath = path.join(backupDir, backupFile);
+
+        // バックアップディレクトリが存在しない場合は作成
+        if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, { recursive: true });
+        }
+
+        const dbUser = process.env.DB_USER || 'production_user';
+        const dbName = process.env.DB_NAME || 'production_db';
+        const dbHost = process.env.DB_HOST || 'postgres';
+        const dbPassword = process.env.DB_PASSWORD || 'production_password';
+
+        // pg_dumpコマンドを実行
+        const command = `PGPASSWORD="${dbPassword}" pg_dump -h ${dbHost} -U ${dbUser} -d ${dbName} > ${backupPath}`;
+
+        await execPromise(command);
+
+        // ファイルサイズを取得
+        const stats = fs.statSync(backupPath);
+        const fileSizeInBytes = stats.size;
+        const fileSizeInMB = (fileSizeInBytes / (1024 * 1024)).toFixed(2);
+
+        logger.info('Database backup created:', backupFile);
+
+        res.json({
+            success: true,
+            message: 'バックアップが正常に作成されました',
+            filename: backupFile,
+            size: `${fileSizeInMB} MB`,
+            created_at: new Date().toISOString()
+        });
+    } catch (error) {
+        logger.error('Error creating backup:', error);
+        res.status(500).json({
+            success: false,
+            error: 'バックアップの作成に失敗しました',
+            details: error.message
+        });
+    }
+});
+
+// バックアップ一覧取得
+app.get('/database/backups', async (req, res) => {
+    try {
+        const backupDir = '/app/backups';
+
+        // ディレクトリが存在しない場合は空配列を返す
+        if (!fs.existsSync(backupDir)) {
+            return res.json([]);
+        }
+
+        const files = fs.readdirSync(backupDir)
+            .filter(file => file.endsWith('.sql'))
+            .map(file => {
+                const filePath = path.join(backupDir, file);
+                const stats = fs.statSync(filePath);
+                return {
+                    filename: file,
+                    size: `${(stats.size / (1024 * 1024)).toFixed(2)} MB`,
+                    created_at: stats.mtime,
+                    path: filePath
+                };
+            })
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        res.json(files);
+    } catch (error) {
+        logger.error('Error fetching backups:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// === システムログAPI ===
+
+// ログファイル一覧取得
+app.get('/logs/files', async (req, res) => {
+    try {
+        const logDir = '/app';
+        const logFiles = ['error.log', 'combined.log'];
+
+        const files = logFiles
+            .filter(file => fs.existsSync(path.join(logDir, file)))
+            .map(file => {
+                const filePath = path.join(logDir, file);
+                const stats = fs.statSync(filePath);
+                return {
+                    filename: file,
+                    size: `${(stats.size / 1024).toFixed(2)} KB`,
+                    modified_at: stats.mtime,
+                    path: filePath
+                };
+            });
+
+        res.json(files);
+    } catch (error) {
+        logger.error('Error fetching log files:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ログ内容取得
+app.get('/logs/content/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params;
+        const { lines = 100, level } = req.query;
+
+        // セキュリティ: ファイル名のバリデーション
+        const allowedFiles = ['error.log', 'combined.log'];
+        if (!allowedFiles.includes(filename)) {
+            return res.status(400).json({ error: 'Invalid log file' });
+        }
+
+        const logPath = path.join('/app', filename);
+
+        if (!fs.existsSync(logPath)) {
+            return res.status(404).json({ error: 'Log file not found' });
+        }
+
+        // ファイルを読み込み
+        const content = fs.readFileSync(logPath, 'utf8');
+        const allLines = content.split('\n').filter(line => line.trim());
+
+        // レベルフィルタリング
+        let filteredLines = allLines;
+        if (level) {
+            filteredLines = allLines.filter(line => {
+                try {
+                    const parsed = JSON.parse(line);
+                    return parsed.level === level;
+                } catch (e) {
+                    return line.toLowerCase().includes(level.toLowerCase());
+                }
+            });
+        }
+
+        // 最新N行を取得
+        const recentLines = filteredLines.slice(-parseInt(lines));
+
+        // JSON形式でパース試行
+        const parsedLines = recentLines.map(line => {
+            try {
+                return JSON.parse(line);
+            } catch (e) {
+                return { raw: line };
+            }
+        }).reverse(); // 新しい順に
+
+        res.json({
+            filename,
+            total_lines: allLines.length,
+            filtered_lines: filteredLines.length,
+            returned_lines: parsedLines.length,
+            logs: parsedLines
+        });
+    } catch (error) {
+        logger.error('Error reading log file:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
