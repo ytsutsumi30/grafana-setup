@@ -137,7 +137,7 @@ if [ ! -d "$PROJECT_DIR" ]; then
 fi
 
 # SSH接続確認
-if ! ssh -i "$KEY_PATH" -o ConnectTimeout=5 ubuntu@$EC2_IP "echo ok" > /dev/null 2>&1; then
+if ! ssh -i "$KEY_PATH" -o ConnectTimeout=30 ubuntu@$EC2_IP "echo ok" > /dev/null 2>&1; then
     log_error "EC2への接続に失敗しました"
     exit 1
 fi
