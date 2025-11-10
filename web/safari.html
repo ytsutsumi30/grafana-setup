@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QRコードスキャナー（Safari最適化＋URL自動遷移）</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         .scan-guide {
             position: absolute;
@@ -164,17 +164,6 @@
                     </button>
                 </div>
                 
-                <!-- Safari専用注意事項 -->
-                <div class="bg-amber-50 border border-amber-200 rounded-xl shadow-sm p-6 text-left max-w-md mx-auto">
-                    <h3 class="font-semibold text-amber-800 mb-3">🍎 iPhone/iPad Safari最適化</h3>
-                    <ul class="text-sm text-amber-700 space-y-1">
-                        <li>• 段階的カメラ初期化で安定性向上</li>
-                        <li>• iOS特有の遅延問題を解決</li>
-                        <li>• 自動キャリブレーション機能搭載</li>
-                        <li>• URL自動遷移機能付き</li>
-                        <li>• 複数のフォールバック機能</li>
-                    </ul>
-                </div>
             </div>
 
             <!-- カメラ画面 -->
@@ -336,11 +325,7 @@
             </div>
         </div>
 
-        <!-- フッター -->
-        <div class="bg-white border-t border-gray-200 p-4 text-center">
-            <p class="text-sm text-gray-500 mb-1">🔒 HTTPS環境で安全に動作</p>
-            <p class="text-xs text-gray-400">Safari最適化版 + URL自動遷移 v1.3</p>
-        </div>
+
     </div>
 
     <script>
@@ -349,7 +334,7 @@
                 this.video = document.getElementById('camera-video');
                 this.stream = null;
                 this.isScanning = false;
-                this.qrScanner = null;
+                this.html5QrCode = null;
                 this.currentCamera = 'environment';
                 this.cameras = [];
                 this.calibrationAttempts = 0;
@@ -360,11 +345,6 @@
                 this.debugMode = false;
                 this.countdownTimer = null;
                 this.currentUrl = '';
-                this.workerPath = './js/qr-scanner-worker.min.js';
-
-                if (window.QrScanner && !window.QrScanner.WORKER_PATH) {
-                    window.QrScanner.WORKER_PATH = this.workerPath;
-                }
                 
                 this.initElements();
                 this.initEventListeners();
@@ -524,7 +504,12 @@
                     this.frameCount = 0;
                     this.updateStatus('カメラにアクセス中...');
                     
-                    await this.initializeCamera();
+                    this.showScreen('camera-screen');
+                    this.isScanning = true;
+                    
+                    // Html5Qrcodeを使用する場合、カメラ初期化は不要
+                    // Safari最適化: キャリブレーション実行
+                    await this.calibrateCamera();
                     
                 } catch (error) {
                     this.handleError(error);
@@ -758,17 +743,8 @@
                 this.calibrationIndicator.classList.remove('hidden');
                 this.updateStatus(`キャリブレーション中... (${this.calibrationAttempts}/${this.maxCalibrationAttempts})`);
 
-                // カメラストリームの状態確認
-                if (!this.stream || !this.stream.active) {
-                    throw new Error('カメラストリームが無効です');
-                }
-
-                if (!this.video || !this.video.srcObject) {
-                    throw new Error('ビデオ要素が初期化されていません');
-                }
-
                 // iPhone/iPad向けのキャリブレーション期間（長めに設定）
-                const calibrationTime = this.isIOSDevice() ? 3000 : 2000;
+                const calibrationTime = this.isIOSDevice() ? 1500 : 1000;
                 console.log(`Calibrating for ${calibrationTime}ms (iOS: ${this.isIOSDevice()})`);
 
                 await new Promise(resolve => setTimeout(resolve, calibrationTime));
@@ -776,46 +752,8 @@
                 this.calibrationIndicator.classList.add('hidden');
                 this.isCalibrating = false;
 
-                // カメラが完全に準備できているかチェック
-                const isReady = this.video.readyState >= 2 &&
-                               this.video.videoWidth > 0 &&
-                               this.video.videoHeight > 0;
-
-                console.log('Calibration check:', {
-                    readyState: this.video.readyState,
-                    size: `${this.video.videoWidth}x${this.video.videoHeight}`,
-                    currentTime: this.video.currentTime,
-                    attempt: this.calibrationAttempts
-                });
-
-                if (isReady) {
-                    console.log('Calibration successful, waiting for frame stabilization...');
-                    // 初回スキャン失敗対策: フレームが安定するまで追加待機
-                    // iOS Safari では初回のフレームデータが不安定なため、追加の待機時間が必要
-                    const frameStabilizationTime = this.isIOSDevice() ? 1500 : 800;
-                    console.log(`Waiting ${frameStabilizationTime}ms for frame stabilization...`);
-                    this.updateStatus(`QRスキャン準備中...`);
-
-                    await new Promise(resolve => setTimeout(resolve, frameStabilizationTime));
-
-                    console.log('Frame stabilization complete, starting QR detection');
-                    this.startQRDetection();
-                } else if (this.calibrationAttempts < this.maxCalibrationAttempts) {
-                    console.log('Calibration incomplete, retrying...');
-                    setTimeout(() => this.calibrateCamera(), 1500);
-                } else {
-                    // 最大試行回数到達
-                    if (this.video.readyState >= 1) { // 最低限のデータがあれば続行
-                        console.log('Max calibration attempts but continuing...');
-                        // 最大試行時でも追加待機を入れる
-                        const frameStabilizationTime = this.isIOSDevice() ? 1500 : 800;
-                        this.updateStatus(`QRスキャン準備中...`);
-                        await new Promise(resolve => setTimeout(resolve, frameStabilizationTime));
-                        this.startQRDetection();
-                    } else {
-                        throw new Error('カメラのキャリブレーションに失敗しました');
-                    }
-                }
+                console.log('Calibration complete, starting QR detection');
+                this.startQRDetection();
             }
 
             async startQRDetection() {
@@ -823,41 +761,51 @@
                 this.scanningAnimation.classList.remove('hidden');
                 this.updateDebug('detection', 'Starting');
                 
-                // QR Scannerライブラリを使用
-                if (typeof QrScanner !== 'undefined') {
-                    try {
-                        console.log('Initializing QR Scanner with library...');
-                        QrScanner.WORKER_PATH = this.workerPath;
-                        this.qrScanner = new QrScanner(
-                            this.video,
-                            result => this.handleQRResult(result.data || result),
+                try {
+                    console.log('Initializing Html5Qrcode...');
+                    
+                    // Html5Qrcodeインスタンスを作成
+                    this.html5QrCode = new Html5Qrcode("camera-video");
+                    
+                    // カメラデバイスを取得
+                    const devices = await Html5Qrcode.getCameras();
+                    if (devices && devices.length > 0) {
+                        // 背面カメラを優先
+                        const cameraId = devices.find(d => d.label.toLowerCase().includes('back')) 
+                            || devices.find(d => d.label.toLowerCase().includes('environment'))
+                            || devices[0];
+                        
+                        console.log('Using camera:', cameraId.label);
+                        
+                        // スキャン開始
+                        await this.html5QrCode.start(
+                            cameraId.id || { facingMode: "environment" },
                             {
-                                returnDetailedScanResult: true,
-                                highlightScanRegion: false,
-                                highlightCodeOutline: false,
-                                // iPhone/iPad Safari最適化設定
-                                maxScansPerSecond: this.isIOSDevice() ? 3 : 5, // iOSでは更に頻度を下げる
-                                calculateScanRegion: this.calculateScanRegion.bind(this),
-                                preferredCamera: 'environment'
+                                fps: this.isIOSDevice() ? 3 : 5,
+                                qrbox: { width: 250, height: 250 },
+                                aspectRatio: 16/9
+                            },
+                            (decodedText, decodedResult) => {
+                                console.log(`QR Code detected: ${decodedText}`);
+                                this.handleQRResult(decodedText);
+                            },
+                            (errorMessage) => {
+                                // QRコードが見つからない場合のエラーは無視
                             }
                         );
                         
-                        await this.qrScanner.start();
-                        console.log('QR Scanner started successfully');
-                        this.updateDebug('detection', 'QrScanner active');
-                        
-                        // フレームカウンター開始
+                        console.log('Html5Qrcode started successfully');
+                        this.updateDebug('detection', 'Html5Qrcode active');
                         this.startFrameCounter();
                         
-                    } catch (error) {
-                        console.warn('QR Scanner library failed, using fallback:', error);
-                        this.updateDebug('detection', 'Library failed, using fallback');
-                        this.fallbackToManualDetection();
+                    } else {
+                        throw new Error('No cameras found');
                     }
-                } else {
-                    console.log('QR Scanner library not available, using fallback');
-                    this.updateDebug('detection', 'Library not available');
-                    this.fallbackToManualDetection();
+                    
+                } catch (error) {
+                    console.error('Html5Qrcode initialization failed:', error);
+                    this.updateDebug('detection', 'Html5Qrcode failed');
+                    this.handleError(error);
                 }
             }
 
@@ -1145,17 +1093,17 @@
 
             // Safari最適化: スキャン一時停止/再開
             pauseScanning() {
-                if (this.qrScanner) {
-                    this.qrScanner.stop();
+                if (this.html5QrCode && this.html5QrCode.isScanning) {
+                    this.html5QrCode.pause();
                 }
                 this.scanningAnimation.classList.add('hidden');
                 this.updateStatus('一時停止中...');
             }
 
             async resumeScanning() {
-                if (this.qrScanner && this.isScanning) {
+                if (this.html5QrCode && this.isScanning) {
                     try {
-                        await this.qrScanner.start();
+                        await this.html5QrCode.resume();
                         this.scanningAnimation.classList.remove('hidden');
                         this.updateStatus('QRコードをスキャン中...');
                     } catch (error) {
@@ -1177,10 +1125,14 @@
             }
 
             cleanupResources() {
-                if (this.qrScanner) {
-                    this.qrScanner.stop();
-                    this.qrScanner.destroy();
-                    this.qrScanner = null;
+                if (this.html5QrCode) {
+                    this.html5QrCode.stop().then(() => {
+                        console.log('Html5Qrcode stopped');
+                        this.html5QrCode.clear();
+                    }).catch(err => {
+                        console.warn('Html5Qrcode stop error:', err);
+                    });
+                    this.html5QrCode = null;
                 }
                 
                 if (this.stream) {
