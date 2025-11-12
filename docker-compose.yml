@@ -22,28 +22,28 @@ services:
     networks:
       - production-network
 
-  # PostgreSQL データベース
-  postgres:
-    image: postgres:15-alpine
-    container_name: production-postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_DB=production_db
-      - POSTGRES_USER=production_user
-      - POSTGRES_PASSWORD=production_pass
-      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - production-network
+  # PostgreSQL データベース (ローカルコンテナは不使用、RDS利用)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: production-postgres
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_DB=production_db
+  #     - POSTGRES_USER=production_user
+  #     - POSTGRES_PASSWORD=production_pass
+  #     - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #     - ./postgres/init:/docker-entrypoint-initdb.d
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+  #   networks:
+  #     - production-network
 
   # 生産管理API サーバー
   production-api:
@@ -55,11 +55,14 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DB_HOST=postgres
+      # RDS PostgreSQL接続設定
+      - DB_HOST=poc-production-db.cj4ycmcqcrbj.ap-northeast-1.rds.amazonaws.com
       - DB_PORT=5432
       - DB_NAME=production_db
       - DB_USER=production_user
-      - DB_PASSWORD=production_pass
+      - DB_PASSWORD=ChangeThisPassword123!
+      - DB_SSL=true
+      - DB_SSL_REJECT_UNAUTHORIZED=false
   # AWS設定（既存）
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -80,8 +83,9 @@ services:
         max-size: "10m"
         max-file: "5"
     command: sh -c "npm install && npm start"
-    depends_on:
-      - postgres
+    # RDS使用時はpostgresコンテナへの依存を削除
+    # depends_on:
+    #   - postgres
     networks:
       - production-network
 
