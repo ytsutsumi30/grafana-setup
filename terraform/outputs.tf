@@ -66,3 +66,27 @@ output "monthly_cost_estimate" {
     Full month without scheduler: ~$30-35
   EOT
 }
+
+# ========================================
+# Route53 and ALB Outputs
+# ========================================
+
+output "route53_zone_id" {
+  description = "Route53 Hosted Zone ID"
+  value       = var.domain_name != "" ? aws_route53_zone.main[0].zone_id : null
+}
+
+output "route53_name_servers" {
+  description = "Route53 Name Servers (update these in your domain registrar)"
+  value       = var.domain_name != "" ? aws_route53_zone.main[0].name_servers : null
+}
+
+output "alb_dns_name" {
+  description = "ALB DNS Name"
+  value       = var.enable_alb && var.domain_name != "" ? module.alb[0].alb_dns_name : null
+}
+
+output "domain_url" {
+  description = "Application URL via domain (HTTPS)"
+  value       = var.enable_alb && var.domain_name != "" ? "https://${var.domain_name}" : "Domain not configured"
+}

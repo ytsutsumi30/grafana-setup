@@ -17,3 +17,9 @@ variable "availability_zone" {
   description = "Availability Zone"
   type        = string
 }
+
+variable "enable_alb" {
+  description = "Enable multi-AZ subnets for ALB"
+  type        = bool
+  default     = false
+}

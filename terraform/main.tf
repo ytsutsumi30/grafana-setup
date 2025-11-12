@@ -45,6 +45,7 @@ module "vpc" {
   vpc_cidr           = var.vpc_cidr
   availability_zone  = var.availability_zone
   public_subnet_cidr = var.public_subnet_cidr
+  enable_alb         = var.enable_alb
 }
 
 # ========================================
@@ -63,6 +64,7 @@ module "ec2" {
   db_user              = var.db_user
   db_password          = var.db_password
   allowed_cidr_blocks  = var.allowed_cidr_blocks
+  enable_grafana       = var.enable_grafana
 }
 
 # ========================================
@@ -95,4 +97,35 @@ module "scheduler" {
   stop_schedule     = var.stop_schedule
   timezone          = var.timezone
   enable_scheduler  = var.enable_scheduler
+}
+
+# ========================================
+# Route53 Hosted Zone
+# ========================================
+resource "aws_route53_zone" "main" {
+  count = var.domain_name != "" ? 1 : 0
+  name  = var.domain_name
+
+  tags = {
+    Name        = "${var.environment}-hosted-zone"
+    Environment = var.environment
+  }
+}
+
+# ========================================
+# Application Load Balancer Module
+# ========================================
+module "alb" {
+  count  = var.enable_alb && var.domain_name != "" ? 1 : 0
+  source = "./modules/alb"
+
+  environment          = var.environment
+  vpc_id              = module.vpc.vpc_id
+  public_subnet_ids   = module.vpc.public_subnet_ids
+  ec2_instance_id     = module.ec2.instance_id
+  domain_name         = var.domain_name
+  zone_id             = aws_route53_zone.main[0].zone_id
+  allowed_cidr_blocks = var.allowed_cidr_blocks
+
+  depends_on = [module.ec2]
 }

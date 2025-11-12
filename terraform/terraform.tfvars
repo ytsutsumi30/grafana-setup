@@ -32,6 +32,10 @@ db_password          = "ChangeThisPassword123!"  # CHANGE THIS!
 # Auto Start/Stop Scheduler
 enable_scheduler = false
 
+# Domain Configuration
+domain_name  = "hispot-iot.com"
+enable_alb   = true
+
 # Schedule times with Asia/Tokyo timezone
 # Start at 9:00 AM JST (Mon-Fri), Stop at 7:00 PM JST (Mon-Fri)
 start_schedule = "cron(0 9 ? * MON-FRI *)"   # 9:00 AM JST (Mon-Fri)

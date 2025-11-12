@@ -113,6 +113,7 @@ locals {
     db_user     = var.db_user
     db_password = var.db_password
     environment = var.environment
+    enable_grafana = var.enable_grafana
   })
 }
 

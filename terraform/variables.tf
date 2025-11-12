@@ -118,3 +118,29 @@ variable "timezone" {
   type        = string
   default     = "Asia/Tokyo"
 }
+
+# ========================================
+# Grafana Configuration
+# ========================================
+
+variable "enable_grafana" {
+  description = "Enable Grafana monitoring (included in docker-compose)"
+  type        = bool
+  default     = false
+}
+
+# ========================================
+# Domain Configuration
+# ========================================
+
+variable "domain_name" {
+  description = "Domain name for the application"
+  type        = string
+  default     = ""
+}
+
+variable "enable_alb" {
+  description = "Enable Application Load Balancer with HTTPS"
+  type        = bool
+  default     = false
+}

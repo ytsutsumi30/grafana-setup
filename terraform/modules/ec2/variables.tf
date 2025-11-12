@@ -48,3 +48,9 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "enable_grafana" {
+  description = "Enable Grafana monitoring"
+  type        = bool
+  default     = false
+}
