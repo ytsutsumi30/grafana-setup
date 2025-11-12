@@ -98,6 +98,8 @@ services:
     networks:
       - production-network
 
+%{ if enable_grafana ~}
+%{ if enable_grafana ~}
   # Grafana
   grafana:
     image: grafana/grafana:latest
@@ -134,10 +136,54 @@ services:
       - '--web.route-prefix=/prometheus/'
     networks:
       - production-network
+%{ endif ~}
 
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-storage:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+      - '--web.external-url=http://localhost/prometheus/'
+      - '--web.route-prefix=/prometheus/'
+    networks:
+      - production-network
+%{ endif ~}
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-storage:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+      - '--web.external-url=http://localhost/prometheus/'
+      - '--web.route-prefix=/prometheus/'
+    networks:
+      - production-network
+
+%{ if enable_grafana ~}
 volumes:
   grafana-storage:
   prometheus-storage:
+%{ endif ~}
 
 networks:
   production-network:

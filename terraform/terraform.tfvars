@@ -30,7 +30,7 @@ db_user              = "production_user"
 db_password          = "ChangeThisPassword123!"  # CHANGE THIS!
 
 # Auto Start/Stop Scheduler
-enable_scheduler = true
+enable_scheduler = false
 
 # Schedule times with Asia/Tokyo timezone
 # Start at 9:00 AM JST (Mon-Fri), Stop at 7:00 PM JST (Mon-Fri)
