@@ -77,8 +77,15 @@ output "route53_zone_id" {
 }
 
 output "route53_name_servers" {
-  description = "Route53 Name Servers (update these in your domain registrar)"
+  description = "Route53 Name Servers"
   value       = var.domain_name != "" ? aws_route53_zone.main[0].name_servers : null
+}
+
+output "domain_nameservers" {
+  description = "Current nameservers configured in Route53 Domain Registrar"
+  value       = var.domain_name != "" && var.manage_domain_nameservers ? [
+    for ns in aws_route53domains_registered_domain.main[0].name_server : ns.name
+  ] : null
 }
 
 output "alb_dns_name" {

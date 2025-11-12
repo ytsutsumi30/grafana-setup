@@ -33,8 +33,9 @@ db_password          = "ChangeThisPassword123!"  # CHANGE THIS!
 enable_scheduler = false
 
 # Domain Configuration
-domain_name  = "hispot-iot.com"
-enable_alb   = true
+domain_name                = "hispot-iot.com"
+enable_alb                 = true
+manage_domain_nameservers  = true
 
 # Schedule times with Asia/Tokyo timezone
 # Start at 9:00 AM JST (Mon-Fri), Stop at 7:00 PM JST (Mon-Fri)

@@ -144,3 +144,9 @@ variable "enable_alb" {
   type        = bool
   default     = false
 }
+
+variable "manage_domain_nameservers" {
+  description = "Manage domain nameservers in Route53 Domains (for domains registered in Route53)"
+  type        = bool
+  default     = true
+}

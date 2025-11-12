@@ -113,6 +113,26 @@ resource "aws_route53_zone" "main" {
 }
 
 # ========================================
+# Route53 Domain Registration (Nameserver Management)
+# ========================================
+resource "aws_route53domains_registered_domain" "main" {
+  count       = var.domain_name != "" && var.manage_domain_nameservers ? 1 : 0
+  domain_name = var.domain_name
+
+  dynamic "name_server" {
+    for_each = aws_route53_zone.main[0].name_servers
+    content {
+      name = name_server.value
+    }
+  }
+
+  tags = {
+    Name        = "${var.environment}-domain"
+    Environment = var.environment
+  }
+}
+
+# ========================================
 # Application Load Balancer Module
 # ========================================
 module "alb" {
