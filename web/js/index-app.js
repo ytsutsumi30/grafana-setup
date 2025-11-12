@@ -136,6 +136,7 @@ function initializeEventListeners() {
     const completeInspectionButton = document.getElementById('btn-complete-inspection');
     const saveDraftButton = document.getElementById('btn-save-draft');
     const printDetailsButton = document.getElementById('btn-print-details');
+    const printShipmentsButton = document.getElementById('btn-print-shipments');
     const startQRButton = document.getElementById('btn-start-qr-scan');
     const completeQRButton = document.getElementById('btn-complete-qr-inspection');
 
@@ -147,6 +148,9 @@ function initializeEventListeners() {
     }
     if (printDetailsButton) {
         printDetailsButton.addEventListener('click', () => window.print());
+    }
+    if (printShipmentsButton) {
+        printShipmentsButton.addEventListener('click', printShipmentList);
     }
     if (startQRButton) {
         startQRButton.addEventListener('click', startQRScanner);
@@ -399,6 +403,9 @@ function createShipmentCard(item) {
                 <button class="btn btn-warning btn-sm flex-grow-1 flex-md-grow-0" data-role="start-qr">
                     <i class="fas fa-qrcode me-1"></i>QR検品
                 </button>
+                <button class="btn btn-info btn-sm flex-grow-1 flex-md-grow-0" data-role="start-ocr">
+                    <i class="fas fa-camera me-1"></i>OCR検品
+                </button>
                 <button class="btn btn-outline-secondary btn-sm flex-grow-1 flex-md-grow-0" data-role="view-details">
                     <i class="fas fa-eye me-1"></i>詳細表示
                 </button>
@@ -427,6 +434,7 @@ function createShipmentCard(item) {
 
     card.querySelector('[data-role="start-inspection"]').addEventListener('click', () => openInspection(item));
     card.querySelector('[data-role="start-qr"]').addEventListener('click', () => openQRInspection(item));
+    card.querySelector('[data-role="start-ocr"]').addEventListener('click', () => openOCRInspection(item));
     card.querySelector('[data-role="view-details"]').addEventListener('click', () => openDetails(item));
 
     return card;
@@ -759,6 +767,32 @@ async function openQRInspection(item) {
     } catch (error) {
         console.error('openQRInspection error:', error);
         showToast(`QR検品画面を開けませんでした: ${error.message}`, 'danger');
+    }
+}
+
+async function openOCRInspection(item) {
+    try {
+        // OCR検品を別タブで開く（製品情報をURLパラメータで渡す）
+        const ocrInspectionUrl = `ocr-v2-enhanced.html?productId=${item.product_id}&productName=${encodeURIComponent(item.product_name)}&shipmentId=${item.id}`;
+        const ocrWindow = window.open(ocrInspectionUrl, 'ocr-inspection', 'width=1200,height=800,left=100,top=100');
+        
+        if (!ocrWindow) {
+            showToast('ポップアップがブロックされました。ブラウザの設定を確認してください。', 'warning');
+            // フォールバック: 同じウィンドウで開く
+            window.location.href = ocrInspectionUrl;
+        } else {
+            // 別タブが開いた場合、完了メッセージを受信するリスナーを設定
+            window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'ocr-inspection-complete') {
+                    showToast(`OCR検品が完了しました`, 'success');
+                    // 出荷指示リストを再読み込み
+                    loadShipments();
+                }
+            });
+        }
+    } catch (error) {
+        console.error('openOCRInspection error:', error);
+        showToast(`OCR検品画面を開けませんでした: ${error.message}`, 'danger');
     }
 }
 
@@ -1438,4 +1472,24 @@ function showToast(message, type = 'info', duration = 4000) {
         toastEl.style.display = 'block';
         setTimeout(() => toastEl.remove(), duration);
     }
+}
+
+// 出荷指示リスト印刷機能
+function printShipmentList() {
+    // 印刷前の準備
+    const originalTitle = document.title;
+    const printDate = new Date().toLocaleString('ja-JP');
+    
+    // 印刷用タイトルを設定
+    document.title = `検品待ち出荷指示一覧 - ${printDate}`;
+    
+    // 印刷ダイアログを表示
+    window.print();
+    
+    // 印刷後、元のタイトルに戻す
+    setTimeout(() => {
+        document.title = originalTitle;
+    }, 100);
+    
+    showToast('印刷プレビューを開きました', 'info');
 }
