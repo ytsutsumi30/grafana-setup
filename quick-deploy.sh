@@ -14,6 +14,7 @@ set -e
 # 設定
 # ========================================
 EC2_IP="52.69.217.246"
+EC2_USER="ec2-user"
 KEY_PATH="$HOME/.ssh/production-management-key.pem"
 PROJECT_DIR="$HOME/grafana-setup"
 REMOTE_PRIMARY_DIR="/opt/production-management"
@@ -107,7 +108,7 @@ show_header
 # 再起動のみの場合
 if [ "$RESTART_ONLY" = true ]; then
     log_info "サービスを再起動しています..."
-    ssh -i "$KEY_PATH" ubuntu@$EC2_IP \
+    ssh -i "$KEY_PATH" $EC2_USER@$EC2_IP \
         "cd $REMOTE_PRIMARY_DIR && docker-compose restart"
     log_success "サービス再起動完了"
     
@@ -137,7 +138,7 @@ if [ ! -d "$PROJECT_DIR" ]; then
 fi
 
 # SSH接続確認
-if ! ssh -i "$KEY_PATH" -o ConnectTimeout=30 ubuntu@$EC2_IP "echo ok" > /dev/null 2>&1; then
+if ! ssh -i "$KEY_PATH" -o ConnectTimeout=30 $EC2_USER@$EC2_IP "echo ok" > /dev/null 2>&1; then
     log_error "EC2への接続に失敗しました"
     exit 1
 fi
@@ -166,7 +167,7 @@ rsync -avz --delete \
     --progress \
     -e "ssh -i $KEY_PATH" \
     "$PROJECT_DIR/" \
-    ubuntu@$EC2_IP:"$REMOTE_PRIMARY_DIR"/ | tee "$RSYNC_LOG"
+    $EC2_USER@$EC2_IP:"$REMOTE_PRIMARY_DIR"/ | tee "$RSYNC_LOG"
 
 # 旧ディレクトリ用の同期（ドキュメント用途）
 rsync -avz --delete \
@@ -183,7 +184,7 @@ rsync -avz --delete \
     --exclude='*.pyc' \
     -e "ssh -i $KEY_PATH" \
     "$PROJECT_DIR/" \
-    ubuntu@$EC2_IP:~/$REMOTE_SECONDARY_DIR/ >/dev/null 2>&1 || true
+    $EC2_USER@$EC2_IP:~/$REMOTE_SECONDARY_DIR/ >/dev/null 2>&1 || true
 
 if grep -qE '^(>f|<f|c|\*)' "$RSYNC_LOG"; then
     log_info "同期されたファイル一覧"
@@ -199,7 +200,7 @@ log_success "ファイル同期完了"
 # 3. 依存関係のインストール（フルデプロイの場合）
 if [ "$FULL_DEPLOY" = true ]; then
     log_info "API依存関係をインストールしています..."
-    ssh -i "$KEY_PATH" ubuntu@$EC2_IP << 'EOF'
+    ssh -i "$KEY_PATH" $EC2_USER@$EC2_IP << 'EOF'
 cd /opt/production-management/api
 npm install --production 2>&1 | tail -5
 EOF
@@ -209,7 +210,7 @@ fi
 # 4. サービス再起動（no-restartオプションがない場合）
 if [ "$NO_RESTART" = false ]; then
     log_info "サービスを再起動しています..."
-    ssh -i "$KEY_PATH" ubuntu@$EC2_IP << 'EOF'
+    ssh -i "$KEY_PATH" $EC2_USER@$EC2_IP << 'EOF'
 cd /opt/production-management
 docker-compose restart
 EOF
@@ -255,10 +256,10 @@ echo "📱 アプリケーション: https://hispot-iot.com"
 echo "🔌 API: https://hispot-iot.com/api/health"
 echo "🛠️  メンテナンス: https://hispot-iot.com/maintenance.html"
 echo "� 製品マスタ: https://hispot-iot.com/products.html"
-echo "🔑 SSH: ssh -i $KEY_PATH ubuntu@$EC2_IP"
+echo "🔑 SSH: ssh -i $KEY_PATH $EC2_USER@$EC2_IP"
 echo ""
 
 # デプロイ時刻を記録
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-ssh -i "$KEY_PATH" ubuntu@$EC2_IP \
+ssh -i "$KEY_PATH" $EC2_USER@$EC2_IP \
     "echo '$TIMESTAMP - Deployed' >> /opt/production-management/deploy.log"

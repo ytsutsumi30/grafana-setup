@@ -183,7 +183,7 @@
                     <h2 class="text-lg font-semibold mb-4 text-gray-900">📷 伝票を撮影</h2>
                     
                     <div class="camera-container mb-4">
-                        <video id="camera-video" class="w-full h-full object-cover" playsinline muted webkit-playsinline></video>
+                        <video id="camera-video" class="w-full h-full object-cover" playsinline muted webkit-playsinline autoplay></video>
                         <canvas id="capture-canvas" class="hidden"></canvas>
                         <div class="camera-overlay">
                             <div class="capture-guide-corner corner-tl"></div>
@@ -405,31 +405,65 @@
             document.getElementById('camera-section').classList.remove('hidden');
         }
 
-        // カメラ起動
+        // カメラ起動（iPad Safari最適化版）
         async function startCamera() {
             try {
                 document.getElementById('camera-status').textContent = 'カメラを起動中...';
                 
+                // iPad Safari対応: より柔軟なカメラ制約
                 const constraints = {
                     video: {
-                        facingMode: 'environment',
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    }
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920, min: 640 },
+                        height: { ideal: 1080, min: 480 },
+                        aspectRatio: { ideal: 16/9 }
+                    },
+                    audio: false
                 };
+                
+                console.log('[OCR Camera] Requesting camera access with constraints:', constraints);
                 
                 videoStream = await navigator.mediaDevices.getUserMedia(constraints);
                 const video = document.getElementById('camera-video');
+                
                 video.srcObject = videoStream;
+                
+                // iPad Safari: videoがloadedmetadataイベントを発火するまで待つ
+                await new Promise((resolve, reject) => {
+                    video.onloadedmetadata = () => {
+                        console.log('[OCR Camera] Video metadata loaded, resolution:', video.videoWidth, 'x', video.videoHeight);
+                        resolve();
+                    };
+                    video.onerror = (err) => {
+                        console.error('[OCR Camera] Video error:', err);
+                        reject(new Error('ビデオ読み込みエラー'));
+                    };
+                    setTimeout(() => reject(new Error('カメラ起動タイムアウト')), 10000);
+                });
+                
+                // 明示的にplay()を呼び出し（iOS Safari対策）
                 await video.play();
+                console.log('[OCR Camera] Video playing successfully');
                 
                 document.getElementById('btn-start-camera').classList.add('hidden');
                 document.getElementById('btn-capture').classList.remove('hidden');
                 document.getElementById('btn-stop-camera').classList.remove('hidden');
                 document.getElementById('camera-status').textContent = '伝票を枠内に合わせてください';
             } catch (error) {
-                console.error('Camera error:', error);
-                alert('カメラの起動に失敗しました: ' + error.message);
+                console.error('[OCR Camera] Camera error:', error);
+                
+                let errorMessage = 'カメラの起動に失敗しました: ' + error.message;
+                
+                if (error.name === 'NotAllowedError') {
+                    errorMessage = 'カメラの使用が拒否されました。Safari設定でカメラの許可を有効にしてください。\n\n設定 > Safari > カメラ';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = 'カメラが見つかりませんでした。デバイスにカメラが接続されているか確認してください。';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = 'カメラが他のアプリで使用中です。他のアプリを閉じてから再試行してください。';
+                }
+                
+                alert(errorMessage);
+                document.getElementById('camera-status').textContent = 'カメラ起動失敗';
             }
         }
 

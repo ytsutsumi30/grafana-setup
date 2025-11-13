@@ -394,7 +394,7 @@
             }
         }
         
-        // html5-qrcode スキャン開始
+        // html5-qrcode スキャン開始（iPad Safari最適化版）
         async startScan() {
             if (this.isScanning) {
                 console.warn('[Start] Already scanning');
@@ -426,10 +426,17 @@
                 this.handleQRResult(decodedText, codeType);
             };
             
-            // スキャン設定
+            // iPad Safari最適化スキャン設定
             const config = {
-                fps: 5,  // 5回/秒
+                fps: 10,  // iPad: 10回/秒に向上（高速スキャン）
                 qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0,  // 1:1比率（QR/バーコード最適）
+                disableFlip: false,  // カメラミラーリング無効化
+                videoConstraints: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1920, min: 640 },
+                    height: { ideal: 1080, min: 480 }
+                },
                 formatsToSupport: [
                     // 1次元バーコード
                     Html5QrcodeSupportedFormats.CODE_39,
@@ -449,15 +456,18 @@
             };
             
             try {
+                console.log('[QR Scanner] Starting camera with config:', config);
+                
+                // iPad Safari: より柔軟なカメラ起動
                 await this.html5QrCode.start(
-                    { facingMode: "environment" },  // 背面カメラ
+                    { facingMode: { ideal: "environment" } },  // idealで柔軟に
                     config,
                     onScanSuccess
                 );
                 
                 this.isScanning = true;
-                this.showStatus('スキャン開始しました', 'success');
-                console.log('[Start] Scanning started successfully');
+                this.showStatus('スキャン開始しました（iPad Safari対応）', 'success');
+                console.log('[QR Scanner] Scanning started successfully on iPad Safari');
                 
                 // ボタンを停止に変更
                 this.btnStartScan.innerHTML = '<i class="fas fa-stop me-2"></i>スキャン停止';
@@ -466,7 +476,7 @@
                 this.btnStartScan.onclick = () => this.stopScan();
                 
             } catch (error) {
-                console.error('[Start] Failed to start scan:', error);
+                console.error('[QR Scanner] Failed to start scan:', error);
                 this.handleError(error);
                 // UI をクリーンアップ
                 this.inspectionContent.innerHTML = '<div class="text-center text-muted py-5"><p>カメラの起動に失敗しました</p></div>';
@@ -553,19 +563,22 @@
             if (error.name) {
                 switch (error.name) {
                     case 'NotAllowedError':
-                        message = 'カメラの使用が拒否されました。ブラウザの設定からカメラの許可を有効にしてください。';
+                        message = 'カメラの使用が拒否されました。\n\niPad Safari: 設定 > Safari > カメラ から許可してください。';
                         break;
                     case 'NotFoundError':
                         message = 'カメラが見つかりませんでした。デバイスにカメラが接続されているか確認してください。';
                         break;
                     case 'NotSupportedError':
-                        message = 'このブラウザではカメラ機能がサポートされていません。最新のブラウザをご利用ください。';
+                        message = 'このブラウザではカメラ機能がサポートされていません。Safari 11以降をご利用ください。';
                         break;
                     case 'NotReadableError':
                         message = 'カメラが他のアプリケーションで使用中です。他のアプリを閉じてから再試行してください。';
                         break;
                     case 'SecurityError':
-                        message = 'セキュリティ制限によりカメラにアクセスできません。HTTPS環境が必要です。';
+                        message = 'セキュリティ制限によりカメラにアクセスできません。HTTPS環境が必要です。\n\n現在のURL: ' + window.location.href;
+                        break;
+                    case 'OverconstrainedError':
+                        message = 'カメラの制約が厳しすぎます。iPad Safariでは自動調整されます。再試行してください。';
                         break;
                 }
             } else if (error.message) {
