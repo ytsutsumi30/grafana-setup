@@ -1781,6 +1781,136 @@ app.get('/qr-inspections/:id', async (req, res) => {
     }
 });
 
+// QR検品用統合データ取得（出荷指示詳細+製品構成部品+在庫情報）
+app.get('/shipping-instructions/:id/qr-inspection-data', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. 出荷指示詳細を取得
+        const shippingResult = await pool.query(`
+            SELECT
+                si.id,
+                si.instruction_id,
+                si.quantity,
+                si.shipping_date,
+                si.customer_name,
+                si.priority,
+                si.status,
+                si.notes,
+                p.id as product_id,
+                p.product_code,
+                p.product_name,
+                p.description as product_description,
+                sl.location_name as shipping_location_name,
+                sl.address as shipping_location_address,
+                dl.location_name as delivery_location_name,
+                dl.address as delivery_location_address
+            FROM shipping_instructions si
+            JOIN products p ON si.product_id = p.id
+            LEFT JOIN shipping_locations sl ON si.shipping_location_id = sl.id
+            LEFT JOIN delivery_locations dl ON si.delivery_location_id = dl.id
+            WHERE si.id = $1
+        `, [id]);
+
+        if (shippingResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        const shipping = shippingResult.rows[0];
+
+        // 2. 製品構成部品を取得
+        const componentsResult = await pool.query(`
+            SELECT
+                pc.id,
+                pc.component_type,
+                pc.component_name,
+                pc.qr_code,
+                pc.is_required
+            FROM product_components pc
+            WHERE pc.product_id = $1
+            ORDER BY
+                CASE pc.component_type
+                    WHEN 'main' THEN 1
+                    WHEN 'accessory' THEN 2
+                    WHEN 'manual' THEN 3
+                    WHEN 'warranty' THEN 4
+                    ELSE 5
+                END, pc.component_name
+        `, [shipping.product_id]);
+
+        // 3. 在庫情報を取得
+        const inventoryResult = await pool.query(`
+            SELECT
+                i.current_stock,
+                i.reserved_stock,
+                i.available_stock,
+                i.location,
+                (i.current_stock - $2) as predicted_stock_after
+            FROM inventory i
+            WHERE i.product_id = $1
+        `, [shipping.product_id, shipping.quantity]);
+
+        const inventory = inventoryResult.rows.length > 0 ? inventoryResult.rows[0] : {
+            current_stock: 0,
+            reserved_stock: 0,
+            available_stock: 0,
+            location: null,
+            predicted_stock_after: -shipping.quantity
+        };
+
+        // 4. 既存のQR検品レコードがあるかチェック
+        const existingInspectionResult = await pool.query(`
+            SELECT id, status, scanned_components, total_components
+            FROM qr_inspections
+            WHERE shipping_instruction_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+        `, [id]);
+
+        const existingInspection = existingInspectionResult.rows.length > 0
+            ? existingInspectionResult.rows[0]
+            : null;
+
+        res.json({
+            shipping: shipping,
+            components: componentsResult.rows,
+            inventory: inventory,
+            existingInspection: existingInspection
+        });
+
+    } catch (error) {
+        logger.error('Error fetching QR inspection data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 最近の検品者リスト取得
+app.get('/inspectors/recent', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 20;
+
+        const result = await pool.query(`
+            SELECT
+                inspector_name as name,
+                MAX(inspection_date) as last_inspection,
+                COUNT(*) as inspection_count
+            FROM (
+                SELECT inspector_name, inspection_date FROM shipping_inspections
+                UNION ALL
+                SELECT inspector_name, created_at as inspection_date FROM qr_inspections
+            ) AS combined
+            GROUP BY inspector_name
+            ORDER BY last_inspection DESC
+            LIMIT $1
+        `, [limit]);
+
+        res.json(result.rows);
+    } catch (error) {
+        logger.error('Error fetching inspectors:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // === 出荷指示 CRUD API ===
 
 // 出荷指示作成バリデーションスキーマ
