@@ -335,31 +335,10 @@
         let checkedProducts = [];
         let ocrResults = { order: null, delivery: null };
 
-        // URLパラメータを取得
-        const urlParams = new URLSearchParams(window.location.search);
-        const productIdFromUrl = urlParams.get('productId');
-        const productNameFromUrl = urlParams.get('productName');
-        const shipmentIdFromUrl = urlParams.get('shipmentId');
-
         // 初期化
         document.addEventListener('DOMContentLoaded', async () => {
             await loadProducts();
             loadCheckedProducts();
-            
-            // URLパラメータから製品IDが渡された場合、自動選択
-            if (productIdFromUrl) {
-                const select = document.getElementById('product-select');
-                select.value = productIdFromUrl;
-                selectProduct();
-                
-                // 製品名が渡されている場合、タイトルに表示
-                if (productNameFromUrl) {
-                    const headerTitle = document.querySelector('.modal-header h4');
-                    if (headerTitle) {
-                        headerTitle.innerHTML = `<i class="fas fa-camera me-2"></i>製品別伝票チェック（OCR v2 Enhanced）<br><small class="text-white-50">製品: ${decodeURIComponent(productNameFromUrl)}</small>`;
-                    }
-                }
-            }
         });
 
         // 製品リスト読み込み
@@ -738,20 +717,6 @@
             updateCheckedProductsList();
 
             alert('検査結果を保存しました');
-            
-            // 親ウィンドウに完了を通知（index.htmlから開かれた場合）
-            if (window.opener && shipmentIdFromUrl) {
-                window.opener.postMessage({
-                    type: 'ocr-inspection-complete',
-                    data: {
-                        shipmentId: shipmentIdFromUrl,
-                        productId: selectedProduct?.id,
-                        productName: selectedProduct?.product_name,
-                        status: window.currentComparison.status
-                    }
-                }, '*');
-            }
-            
             resetCheck();
         }
 

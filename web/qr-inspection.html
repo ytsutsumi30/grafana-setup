@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR同梱物検品 - 出荷検品システム</title>
-    
+
     <!-- バージョン情報 -->
-    <meta name="version" content="3.0.0">
-    <meta name="build-date" content="2025-10-24">
+    <meta name="version" content="4.0.0">
+    <meta name="build-date" content="2025-11-13">
     <meta name="library" content="html5-qrcode">
-    
+
     <!-- キャッシュ制御メタタグ（iOS Safari対応） -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -61,122 +61,6 @@
             object-fit: cover;
             border-radius: 0.5rem;
         }
-        .qr-scan-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            border: 2px solid rgba(96, 165, 250, 0.8);
-            border-radius: 12px;
-            pointer-events: none;
-            z-index: 10;
-        }
-        .qr-scan-corner {
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #60a5fa;
-        }
-        .qr-scan-corner.tl { top: -3px; left: -3px; border-right: none; border-bottom: none; }
-        .qr-scan-corner.tr { top: -3px; right: -3px; border-left: none; border-bottom: none; }
-        .qr-scan-corner.bl { bottom: -3px; left: -3px; border-right: none; border-top: none; }
-        .qr-scan-corner.br { bottom: -3px; right: -3px; border-left: none; border-top: none; }
-        @keyframes scan-line {
-            0% { top: 0%; }
-            50% { top: 100%; }
-            100% { top: 0%; }
-        }
-        .qr-scan-line {
-            position: absolute;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, #60a5fa, transparent);
-            animation: scan-line 2s ease-in-out infinite;
-            z-index: 11;
-        }
-        .qr-status-overlay {
-            position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.75);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 1rem;
-            font-size: 0.875rem;
-            z-index: 12;
-            max-width: 90%;
-            text-align: center;
-        }
-        
-        /* safari.html統合: デバッグ情報スタイル */
-        .debug-info {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.85);
-            color: #00ff00;
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 11px;
-            font-family: 'Courier New', monospace;
-            max-width: 280px;
-            max-height: 400px;
-            overflow-y: auto;
-            line-height: 1.4;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            z-index: 20;
-        }
-        .debug-info .debug-title {
-            color: #ffff00;
-            font-weight: bold;
-            border-bottom: 1px solid #444;
-            padding-bottom: 4px;
-            margin-bottom: 6px;
-        }
-        .debug-info .debug-section {
-            margin-bottom: 8px;
-        }
-        .debug-info .debug-label {
-            color: #00ccff;
-            display: inline-block;
-            min-width: 100px;
-        }
-        .debug-info .debug-value {
-            color: #00ff00;
-        }
-        
-        /* safari.html統合: キャリブレーション表示 */
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .calibrating {
-            animation: pulse 1s ease-in-out infinite;
-        }
-        
-        /* safari.html統合: スキャン中アニメーション */
-        @keyframes scanning {
-            0% { background-position: 0% 0%; }
-            100% { background-position: 0% 100%; }
-        }
-        .scanning-line {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            background: linear-gradient(180deg, transparent 0%, transparent 45%, #60a5fa 50%, transparent 55%, transparent 100%);
-            background-size: 100% 200%;
-            animation: scanning 2s linear infinite;
-            border-radius: 12px;
-            pointer-events: none;
-            z-index: 11;
-        }
         .qr-item-card {
             border-left: 4px solid #ffc107;
             margin-bottom: 1rem;
@@ -205,6 +89,16 @@
             background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
             border: 2px solid #2196f3;
         }
+        .component-type-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+        }
+        .loading-spinner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+        }
     </style>
 </head>
 <body>
@@ -227,11 +121,84 @@
     </div>
 
     <div class="container-fluid py-4">
+        <!-- 出荷指示情報カード -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card shadow-sm border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-info-circle me-2"></i>出荷指示情報
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="shipping-info-loading" class="loading-spinner">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">読み込み中...</span>
+                            </div>
+                        </div>
+                        <div id="shipping-info-content" style="display: none;">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>出荷指示番号:</strong> <span id="instruction-id">-</span></p>
+                                    <p><strong>製品:</strong> <span id="product-name">-</span> (<span id="product-code">-</span>)</p>
+                                    <p><strong>出荷数量:</strong> <span id="shipping-quantity">-</span>個</p>
+                                    <p><strong>顧客:</strong> <span id="customer-name">-</span></p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>配送先:</strong> <span id="delivery-location">-</span></p>
+                                    <p><strong>出荷日:</strong> <span id="shipping-date">-</span></p>
+                                    <p><strong>優先度:</strong> <span id="priority-badge" class="badge">-</span></p>
+                                    <p><strong>特記事項:</strong> <span id="notes">-</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="row">
-            <!-- 左側: QRスキャナーエリア -->
+            <!-- 左側: QRスキャナーエリア + 在庫情報 -->
             <div class="col-lg-6 mb-4">
-                <div class="card shadow-sm">
+                <!-- 在庫情報カード -->
+                <div class="card shadow-sm border-info mb-3">
                     <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-warehouse me-2"></i>在庫情報
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="inventory-info-loading" class="loading-spinner" style="min-height: 100px;">
+                            <div class="spinner-border text-info" role="status">
+                                <span class="visually-hidden">読み込み中...</span>
+                            </div>
+                        </div>
+                        <div id="inventory-info-content" style="display: none;">
+                            <div class="row text-center">
+                                <div class="col-4">
+                                    <h4 class="text-primary mb-0" id="current-stock">-</h4>
+                                    <small class="text-muted">現在庫</small>
+                                </div>
+                                <div class="col-4">
+                                    <h4 class="text-success mb-0" id="available-stock">-</h4>
+                                    <small class="text-muted">利用可能</small>
+                                </div>
+                                <div class="col-4">
+                                    <h4 class="text-warning mb-0" id="predicted-stock">-</h4>
+                                    <small class="text-muted">検品後</small>
+                                </div>
+                            </div>
+                            <div id="low-stock-warning" class="alert alert-warning mt-3 mb-0" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>警告:</strong> 検品後の在庫が不足する可能性があります
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- QRスキャナーカード -->
+                <div class="card shadow-sm">
+                    <div class="card-header bg-warning text-dark">
                         <h5 class="mb-0">
                             <i class="fas fa-camera me-2"></i>QRコードスキャン
                         </h5>
@@ -243,9 +210,7 @@
                                 <i class="fas fa-user me-1"></i>検品者名 <span class="text-danger">*</span>
                             </label>
                             <select class="form-select" id="qr-inspector-name" required>
-                                <option value="田中太郎" selected>田中太郎</option>
-                                <option value="佐藤花子">佐藤花子</option>
-                                <option value="山田次郎">山田次郎</option>
+                                <option value="">読み込み中...</option>
                             </select>
                         </div>
 
@@ -263,7 +228,7 @@
                                 <button type="button" class="btn btn-outline-secondary" id="btn-manual-input">
                                     <i class="fas fa-keyboard me-1"></i>手動入力
                                 </button>
-                                <button type="button" class="btn btn-outline-secondary" id="btn-test-scan">
+                                <button type="button" class="btn btn-outline-secondary" id="btn-test-scan" style="display: none;">
                                     <i class="fas fa-vial me-1"></i>テストスキャン
                                 </button>
                             </div>
@@ -290,7 +255,7 @@
                             <span class="badge bg-primary" id="qr-progress-badge">0 / 0</span>
                         </div>
                         <div class="progress" style="height: 25px;">
-                            <div id="qr-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                            <div id="qr-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
                                  role="progressbar" style="width: 0%">0%</div>
                         </div>
                         <div class="mt-2 text-center">
@@ -301,7 +266,7 @@
 
                 <!-- 検品リスト -->
                 <div class="card shadow-sm">
-                    <div class="card-header bg-warning text-dark">
+                    <div class="card-header bg-success text-white">
                         <h5 class="mb-0">
                             <i class="fas fa-list me-2"></i>検品対象一覧
                         </h5>
@@ -334,12 +299,12 @@
                         <i class="fas fa-times me-2"></i>キャンセル
                     </button>
                     <small class="text-muted ms-2" id="version-info">
-                        v<span id="app-version">2.1.1</span> 
-                        (<span id="build-date">2025-10-18</span>)
+                        v<span id="app-version">-</span>
+                        (<span id="build-date">-</span>)
                     </small>
                 </div>
                 <div class="col-auto">
-                    <button type="button" class="btn btn-success btn-lg" id="btn-complete-qr-inspection">
+                    <button type="button" class="btn btn-success btn-lg" id="btn-complete-qr-inspection" disabled>
                         <i class="fas fa-check me-2"></i>検品完了
                     </button>
                 </div>
@@ -350,73 +315,91 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- html5-qrcode ライブラリ（バーコード・QRコード対応） -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    
+
     <script>
     /**
-     * QR同梱物検品システム - html5-qrcode統合版
-     * バーコード（1次元）とQRコード（2次元）の両方に対応
+     * QR同梱物検品システム - 完全API統合版
+     * バージョン 4.0.0 (2025-11-13)
      */
-    
-    class Html5QRCodeInspection {
+
+    const API_BASE_URL = '/api';
+
+    class QRInspectionSystem {
         constructor() {
-            // バージョン情報
-            this.version = '3.0.0';
-            this.buildDate = '2025-10-24';
-            this.gitCommit = 'html5-qrcode';
-            
+            // バージョン情報をメタタグから取得
+            this.version = document.querySelector('meta[name="version"]')?.content || 'unknown';
+            this.buildDate = document.querySelector('meta[name="build-date"]')?.content || 'unknown';
+            this.library = document.querySelector('meta[name="library"]')?.content || 'html5-qrcode';
+
+            // URLパラメータから出荷指示IDを取得
+            this.shippingInstructionId = this.getShippingInstructionId();
+
+            if (!this.shippingInstructionId) {
+                alert('出荷指示IDが指定されていません。検品システムに戻ります。');
+                window.close();
+                return;
+            }
+
             // html5-qrcode スキャナー
             this.html5QrCode = null;
             this.isScanning = false;
             this.lastScannedCode = '';
             this.lastScannedTime = 0;
-            this.scanDedupDelay = 1000; // 1秒以内の重複スキャンを無視
-            
+            this.scanDedupDelay = 1000;
+
             // 検品システム固有プロパティ
             this.inspectorName = '';
             this.scannedItems = new Set();
             this.targetItems = [];
-            
+            this.shippingData = null;
+            this.inventoryData = null;
+            this.qrInspectionId = null;
+
             this.init();
         }
-        
-        init() {
+
+        getShippingInstructionId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('id');
+        }
+
+        async init() {
             this.logVersionInfo();
+            this.renderVersionInfo();
             this.initElements();
             this.initEventListeners();
             this.initPageLifecycleHandling();
-            this.loadMockData();
+
+            // データ読み込み
+            await Promise.all([
+                this.loadShippingInstructionData(),
+                this.loadInspectors()
+            ]);
         }
-        
-        // バージョン情報をログ出力
+
         logVersionInfo() {
             console.log('%c╔════════════════════════════════════════════╗', 'color: #00a8ff; font-weight: bold;');
-            console.log('%c║  QR同梱物検品システム                      ║', 'color: #00a8ff; font-weight: bold;');
-            console.log('%c║  html5-qrcode統合版                        ║', 'color: #00a8ff; font-weight: bold;');
-            console.log('%c║  バーコード・QRコード対応                  ║', 'color: #00a8ff; font-weight: bold;');
+            console.log('%c║  QR同梱物検品システム v4.0.0              ║', 'color: #00a8ff; font-weight: bold;');
+            console.log('%c║  完全API統合版                             ║', 'color: #00a8ff; font-weight: bold;');
             console.log('%c╠════════════════════════════════════════════╣', 'color: #00a8ff; font-weight: bold;');
             console.log('%c║  Version:    ' + this.version.padEnd(30) + '║', 'color: #0be881;');
             console.log('%c║  Build Date: ' + this.buildDate.padEnd(30) + '║', 'color: #0be881;');
-            console.log('%c║  Library:    html5-qrcode' + ''.padEnd(19) + '║', 'color: #0be881;');
-            console.log('%c║  User Agent: ' + navigator.userAgent.substring(0, 28).padEnd(30) + '║', 'color: #ffd32a;');
+            console.log('%c║  Library:    ' + this.library.padEnd(30) + '║', 'color: #0be881;');
+            console.log('%c║  Shipping ID:' + this.shippingInstructionId.padEnd(30) + '║', 'color: #ffd32a;');
             console.log('%c╚════════════════════════════════════════════╝', 'color: #00a8ff; font-weight: bold;');
-            
-            // グローバルに公開（デバッグ用）
-            window.QR_INSPECTION_VERSION = {
-                version: this.version,
-                buildDate: this.buildDate,
-                library: 'html5-qrcode',
-                timestamp: new Date().toISOString()
-            };
         }
-        
+
+        renderVersionInfo() {
+            document.getElementById('app-version').textContent = this.version;
+            document.getElementById('build-date').textContent = this.buildDate;
+        }
+
         initElements() {
-            // ボタン要素
             this.btnStartScan = document.getElementById('btn-start-qr-scan');
             this.btnManualInput = document.getElementById('btn-manual-input');
             this.btnTestScan = document.getElementById('btn-test-scan');
             this.btnComplete = document.getElementById('btn-complete-qr-inspection');
-            
-            // 表示エリア
+
             this.inspectionContent = document.getElementById('qr-inspection-content');
             this.itemsList = document.getElementById('qr-items-list');
             this.statusMessage = document.getElementById('qr-status-message');
@@ -425,21 +408,18 @@
             this.progressBadge = document.getElementById('qr-progress-badge');
             this.progressLabel = document.getElementById('qr-progress-label');
             this.resultContainer = document.getElementById('qr-result-container');
-            
-            // 検品者名入力
+
             this.inspectorNameInput = document.getElementById('qr-inspector-name');
         }
-        
+
         initEventListeners() {
             this.btnStartScan.addEventListener('click', () => this.handleStartScan());
             this.btnManualInput.addEventListener('click', () => this.handleManualInput());
             this.btnTestScan.addEventListener('click', () => this.handleTestScan());
             this.btnComplete.addEventListener('click', () => this.handleComplete());
         }
-        
-        // ページライフサイクル対応
+
         initPageLifecycleHandling() {
-            // ページアンロード時にスキャンを停止
             window.addEventListener('beforeunload', () => {
                 if (this.html5QrCode && this.isScanning) {
                     try {
@@ -451,8 +431,7 @@
                     }
                 }
             });
-            
-            // Page Visibility API
+
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden && this.isScanning) {
                     console.log('[Visibility] Page hidden - pausing');
@@ -461,63 +440,235 @@
                 }
             });
         }
-        
+
+        async loadShippingInstructionData() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/shipping-instructions/${this.shippingInstructionId}/qr-inspection-data`);
+
+                if (!response.ok) {
+                    throw new Error(`出荷指示の取得に失敗しました (HTTP ${response.status})`);
+                }
+
+                const data = await response.json();
+
+                this.shippingData = data.shipping;
+                this.inventoryData = data.inventory;
+                this.targetItems = data.components.map(comp => ({
+                    id: comp.id,
+                    code: comp.qr_code,
+                    name: comp.component_name,
+                    type: comp.component_type,
+                    required: comp.is_required
+                }));
+
+                // 既存の検品レコードがあれば復元
+                if (data.existingInspection && data.existingInspection.status === 'in_progress') {
+                    this.qrInspectionId = data.existingInspection.id;
+                    // スキャン済みアイテムを復元する処理を追加可能
+                }
+
+                this.renderShippingInfo();
+                this.renderInventoryInfo();
+                this.renderItemsList();
+                this.updateProgress();
+
+            } catch (error) {
+                console.error('Failed to load shipping instruction data:', error);
+                alert('出荷指示データの読み込みに失敗しました。\n' + error.message);
+                // エラー時は閉じる
+                setTimeout(() => window.close(), 2000);
+            }
+        }
+
+        async loadInspectors() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/inspectors/recent?limit=20`);
+
+                if (!response.ok) {
+                    throw new Error('検品者リストの取得に失敗しました');
+                }
+
+                const inspectors = await response.json();
+
+                const select = this.inspectorNameInput;
+                select.innerHTML = '<option value="">--- 選択してください ---</option>' +
+                    inspectors.map(inspector =>
+                        `<option value="${inspector.name}">${inspector.name} (${inspector.inspection_count}件)</option>`
+                    ).join('');
+
+            } catch (error) {
+                console.error('Failed to load inspectors:', error);
+                // エラー時はデフォルトオプションを設定
+                this.inspectorNameInput.innerHTML = '<option value="">--- 手入力してください ---</option>';
+                this.inspectorNameInput.setAttribute('list', 'inspector-datalist');
+                // datalist を追加して手入力を可能にする
+                const datalist = document.createElement('datalist');
+                datalist.id = 'inspector-datalist';
+                this.inspectorNameInput.parentElement.appendChild(datalist);
+            }
+        }
+
+        renderShippingInfo() {
+            if (!this.shippingData) return;
+
+            document.getElementById('shipping-info-loading').style.display = 'none';
+            document.getElementById('shipping-info-content').style.display = 'block';
+
+            document.getElementById('instruction-id').textContent = this.shippingData.instruction_id;
+            document.getElementById('product-name').textContent = this.shippingData.product_name;
+            document.getElementById('product-code').textContent = this.shippingData.product_code;
+            document.getElementById('shipping-quantity').textContent = this.shippingData.quantity.toLocaleString();
+            document.getElementById('customer-name').textContent = this.shippingData.customer_name || '未設定';
+            document.getElementById('delivery-location').textContent = this.shippingData.delivery_location_name || '未設定';
+            document.getElementById('shipping-date').textContent = this.formatDate(this.shippingData.shipping_date);
+
+            const priorityBadge = document.getElementById('priority-badge');
+            const priorityMap = {
+                'high': { text: '高優先度', class: 'bg-danger' },
+                'normal': { text: '通常', class: 'bg-primary' },
+                'low': { text: '低優先度', class: 'bg-secondary' }
+            };
+            const priority = priorityMap[this.shippingData.priority] || priorityMap['normal'];
+            priorityBadge.textContent = priority.text;
+            priorityBadge.className = `badge ${priority.class}`;
+
+            document.getElementById('notes').textContent = this.shippingData.notes || 'なし';
+        }
+
+        renderInventoryInfo() {
+            if (!this.inventoryData) return;
+
+            document.getElementById('inventory-info-loading').style.display = 'none';
+            document.getElementById('inventory-info-content').style.display = 'block';
+
+            document.getElementById('current-stock').textContent = this.inventoryData.current_stock.toLocaleString();
+            document.getElementById('available-stock').textContent = this.inventoryData.available_stock.toLocaleString();
+            document.getElementById('predicted-stock').textContent = this.inventoryData.predicted_stock_after.toLocaleString();
+
+            const warningElement = document.getElementById('low-stock-warning');
+            if (this.inventoryData.predicted_stock_after < 10) {
+                warningElement.style.display = 'block';
+            } else {
+                warningElement.style.display = 'none';
+            }
+        }
+
+        renderItemsList() {
+            if (this.targetItems.length === 0) {
+                this.itemsList.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        この製品には同梱物が登録されていません。
+                    </div>
+                `;
+                return;
+            }
+
+            const typeLabels = {
+                'main': { text: '本体', class: 'bg-primary' },
+                'accessory': { text: '付属品', class: 'bg-info' },
+                'manual': { text: 'マニュアル', class: 'bg-success' },
+                'warranty': { text: '保証書', class: 'bg-warning' }
+            };
+
+            this.itemsList.innerHTML = this.targetItems.map(item => {
+                const typeInfo = typeLabels[item.type] || { text: item.type, class: 'bg-secondary' };
+                return `
+                    <div class="card qr-item-card" data-item-code="${item.code}">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="qr-status-icon">
+                                    <i class="fas fa-clock qr-pending"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">
+                                        ${item.name}
+                                        <span class="badge component-type-badge ${typeInfo.class}">${typeInfo.text}</span>
+                                        ${item.required ? '<span class="badge component-type-badge bg-danger">必須</span>' : ''}
+                                    </h6>
+                                    <small class="text-muted">QRコード: ${item.code}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
         async handleStartScan() {
-            // 検品者名チェック
             this.inspectorName = this.inspectorNameInput.value;
             if (!this.inspectorName) {
                 alert('検品者名を選択してください');
                 this.inspectorNameInput.focus();
                 return;
             }
-            
-            console.log(`[Start] Starting scan for inspector: ${this.inspectorName}`);
-            
+
+            // QR検品セッションを開始（まだ作成していない場合）
+            if (!this.qrInspectionId) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/qr-inspections`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            shipping_instruction_id: this.shippingInstructionId,
+                            inspector_name: this.inspectorName
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('QR検品セッションの開始に失敗しました');
+                    }
+
+                    const inspection = await response.json();
+                    this.qrInspectionId = inspection.id;
+
+                } catch (error) {
+                    console.error('Failed to start QR inspection:', error);
+                    alert('QR検品セッションの開始に失敗しました。\n' + error.message);
+                    return;
+                }
+            }
+
+            console.log(`[Start] Starting scan for inspector: ${this.inspectorName}, inspection ID: ${this.qrInspectionId}`);
+
             try {
                 await this.startScan();
             } catch (error) {
                 this.handleError(error);
             }
         }
-        
-        // html5-qrcode スキャン開始
+
         async startScan() {
             if (this.isScanning) {
                 console.warn('[Start] Already scanning');
                 return;
             }
-            
-            // カメラUI作成
+
             this.createCameraUI();
-            
-            // html5-qrcode インスタンス作成
+
             this.html5QrCode = new Html5Qrcode("qr-reader-container");
-            
-            // スキャン成功コールバック
+
             const onScanSuccess = (decodedText, decodedResult) => {
                 const currentTime = Date.now();
-                
-                // 重複スキャン防止（1秒以内の同一コードは無視）
-                if (decodedText === this.lastScannedCode && 
+
+                if (decodedText === this.lastScannedCode &&
                     currentTime - this.lastScannedTime < this.scanDedupDelay) {
                     return;
                 }
-                
+
                 this.lastScannedCode = decodedText;
                 this.lastScannedTime = currentTime;
-                
+
                 const codeType = decodedResult.result.format.formatName;
                 console.log(`[Scan] Detected ${codeType}:`, decodedText);
-                
+
                 this.handleQRResult(decodedText, codeType);
             };
-            
-            // スキャン設定
+
             const config = {
-                fps: 5,  // 5回/秒
+                fps: 5,
                 qrbox: { width: 250, height: 250 },
                 formatsToSupport: [
-                    // 1次元バーコード
                     Html5QrcodeSupportedFormats.CODE_39,
                     Html5QrcodeSupportedFormats.CODE_93,
                     Html5QrcodeSupportedFormats.CODE_128,
@@ -526,44 +677,41 @@
                     Html5QrcodeSupportedFormats.UPC_A,
                     Html5QrcodeSupportedFormats.UPC_E,
                     Html5QrcodeSupportedFormats.ITF,
-                    // 2次元コード
                     Html5QrcodeSupportedFormats.QR_CODE,
                     Html5QrcodeSupportedFormats.DATA_MATRIX,
                     Html5QrcodeSupportedFormats.AZTEC,
                     Html5QrcodeSupportedFormats.PDF_417
                 ]
             };
-            
+
             try {
                 await this.html5QrCode.start(
-                    { facingMode: "environment" },  // 背面カメラ
+                    { facingMode: "environment" },
                     config,
                     onScanSuccess
                 );
-                
+
                 this.isScanning = true;
                 this.showStatus('スキャン開始しました', 'success');
                 console.log('[Start] Scanning started successfully');
-                
-                // ボタンを停止に変更
+
                 this.btnStartScan.innerHTML = '<i class="fas fa-stop me-2"></i>スキャン停止';
                 this.btnStartScan.classList.remove('btn-primary');
                 this.btnStartScan.classList.add('btn-danger');
                 this.btnStartScan.onclick = () => this.stopScan();
-                
+
             } catch (error) {
                 console.error('[Start] Failed to start scan:', error);
                 this.handleError(error);
-                // UI をクリーンアップ
                 this.inspectionContent.innerHTML = '<div class="text-center text-muted py-5"><p>カメラの起動に失敗しました</p></div>';
             }
         }
-        
+
         createCameraUI() {
             this.inspectionContent.innerHTML = `
                 <div id="qr-reader-container" style="width: 100%; border-radius: 0.5rem; overflow: hidden;"></div>
                 <div class="mt-3">
-                    <div class="alert alert-info">
+                    <div class="alert alert-info mb-0">
                         <i class="fas fa-info-circle me-2"></i>
                         <strong>バーコード・QRコード対応</strong><br>
                         <small>CODE-128, EAN-13, UPC, QRコードなど12種類に対応</small>
@@ -572,33 +720,52 @@
             `;
         }
 
-        
-        // QR/バーコード検出結果処理（検品システム統合）
-        handleQRResult(data, codeType = 'Unknown') {
+        async handleQRResult(data, codeType = 'Unknown') {
             if (!this.isScanning) return;
-            
+
             console.log(`[Scan] Detected ${codeType}:`, data);
-            
-            // 検品リストと照合
+
             const item = this.targetItems.find(item => item.code === data);
-            
+
             if (item) {
                 if (this.scannedItems.has(data)) {
                     this.showStatus(`既にスキャン済みです: ${item.name}`, 'warning');
                     this.playBeep('error');
                 } else {
-                    this.scannedItems.add(data);
-                    this.updateItemStatus(data, true);
-                    this.updateProgress();
-                    this.showStatus(`✓ スキャン完了 (${codeType}): ${item.name}`, 'success');
-                    this.playBeep('success');
-                    
-                    // 全てスキャン完了チェック
-                    if (this.scannedItems.size === this.targetItems.length) {
-                        setTimeout(() => {
-                            this.stopScan();
-                            this.showStatus('全ての検品が完了しました！', 'success');
-                        }, 1000);
+                    // APIにスキャンを記録
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/qr-inspections/${this.qrInspectionId}/scan`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ qr_code: data })
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success) {
+                            this.scannedItems.add(data);
+                            this.updateItemStatus(data, true);
+                            this.updateProgress();
+                            this.showStatus(`✓ スキャン完了 (${codeType}): ${item.name}`, 'success');
+                            this.playBeep('success');
+
+                            // 全てスキャン完了チェック
+                            if (this.scannedItems.size === this.targetItems.length) {
+                                setTimeout(() => {
+                                    this.stopScan();
+                                    this.showStatus('全ての検品が完了しました！検品完了ボタンを押してください。', 'success');
+                                    this.btnComplete.disabled = false;
+                                }, 1000);
+                            }
+                        } else {
+                            this.showStatus(result.message || 'スキャンの記録に失敗しました', 'danger');
+                            this.playBeep('error');
+                        }
+
+                    } catch (error) {
+                        console.error('Failed to record scan:', error);
+                        this.showStatus('スキャンの記録に失敗しました', 'danger');
+                        this.playBeep('error');
                     }
                 }
             } else {
@@ -606,14 +773,13 @@
                 this.playBeep('error');
             }
         }
-        
+
         stopScan() {
             if (!this.isScanning) return;
-            
+
             console.log('[Stop] Stopping scan...');
             this.isScanning = false;
-            
-            // html5-qrcode スキャン停止
+
             if (this.html5QrCode) {
                 this.html5QrCode.stop()
                     .then(() => {
@@ -624,23 +790,21 @@
                         console.error('[Stop] Error stopping scanner:', err);
                     });
             }
-            
-            // UIリセット
+
             this.inspectionContent.innerHTML = '<div class="text-center text-muted py-5"><p>スキャナーは停止しました</p></div>';
-            
-            // ボタンを開始状態に戻す
+
             this.btnStartScan.innerHTML = '<i class="fas fa-camera me-2"></i>QRスキャン開始';
             this.btnStartScan.classList.remove('btn-danger');
             this.btnStartScan.classList.add('btn-primary');
             this.btnStartScan.onclick = null;
             this.btnStartScan.addEventListener('click', () => this.handleStartScan(), { once: true });
-            
+
             this.showStatus('スキャンを停止しました', 'info');
         }
-        
+
         handleError(error) {
             let message = 'カメラにアクセスできませんでした。';
-            
+
             if (error.name) {
                 switch (error.name) {
                     case 'NotAllowedError':
@@ -665,58 +829,72 @@
 
             this.showStatus(message, 'danger');
             console.error('[Error]', error);
-            
+
             alert(message);
         }
-        
+
         handleManualInput() {
-            const input = prompt('コードを手入力してください (バーコード/QRコード):');
+            const input = prompt('QRコードを手入力してください:');
             if (input && input.trim()) {
                 this.handleQRResult(input.trim(), 'Manual');
             }
         }
-        
+
         handleTestScan() {
-            // テスト用: ランダムにアイテムをスキャン
             const unscannedItems = this.targetItems.filter(item => !this.scannedItems.has(item.code));
             if (unscannedItems.length > 0) {
                 const randomItem = unscannedItems[Math.floor(Math.random() * unscannedItems.length)];
-                this.handleQRResult(randomItem.code);
+                this.handleQRResult(randomItem.code, 'Test');
             } else {
                 this.showStatus('全てスキャン済みです', 'info');
             }
         }
-        
-        handleComplete() {
+
+        async handleComplete() {
             const unscanned = this.targetItems.length - this.scannedItems.size;
-            
+
             if (unscanned > 0) {
                 if (!confirm(`未スキャンのアイテムが${unscanned}件あります。検品を完了しますか？`)) {
                     return;
                 }
             }
-            
-            alert(`検品完了\n検品者: ${this.inspectorName}\nスキャン済み: ${this.scannedItems.size}/${this.targetItems.length}`);
-            
-            // 実際のシステムでは、ここでデータを送信
-            console.log('検品完了データ:', {
-                inspector: this.inspectorName,
-                scannedItems: Array.from(this.scannedItems),
-                totalItems: this.targetItems.length,
-                timestamp: new Date().toISOString()
-            });
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/qr-inspections/${this.qrInspectionId}/complete`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        notes: unscanned > 0 ? `未スキャン: ${unscanned}件` : '全件スキャン完了'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('検品完了の記録に失敗しました');
+                }
+
+                const result = await response.json();
+
+                alert(`検品完了\n検品者: ${this.inspectorName}\nスキャン済み: ${this.scannedItems.size}/${this.targetItems.length}\n在庫更新: 完了`);
+
+                // 完了後は元の画面に戻る
+                window.close();
+
+            } catch (error) {
+                console.error('Failed to complete inspection:', error);
+                alert('検品完了の記録に失敗しました。\n' + error.message);
+            }
         }
-        
+
         showStatus(message, type = 'info') {
             this.statusText.textContent = message;
             this.statusMessage.className = `mt-3 alert alert-${type}`;
             this.statusMessage.style.display = 'block';
-            
+
             setTimeout(() => {
                 this.statusMessage.style.display = 'none';
             }, 3000);
         }
-        
+
         updateItemStatus(code, scanned) {
             const itemCard = document.querySelector(`[data-item-code="${code}"]`);
             if (itemCard) {
@@ -729,71 +907,45 @@
                 }
             }
         }
-        
+
         updateProgress() {
             const total = this.targetItems.length;
             const scanned = this.scannedItems.size;
             const percentage = total > 0 ? Math.round((scanned / total) * 100) : 0;
-            
+
             this.progressBar.style.width = percentage + '%';
             this.progressBar.textContent = percentage + '%';
             this.progressBadge.textContent = `${scanned} / ${total}`;
             this.progressLabel.textContent = scanned === total ? '検品完了' : `残り ${total - scanned} 件`;
-            
+
             if (scanned === total) {
                 this.progressBar.classList.remove('progress-bar-animated');
                 this.progressBar.classList.add('bg-success');
+                this.btnComplete.disabled = false;
             }
         }
-        
-        loadMockData() {
-            // モックデータ: 実際のシステムではAPIから取得
-            this.targetItems = [
-                { code: 'ITEM001', name: '商品A', quantity: 1 },
-                { code: 'ITEM002', name: '商品B', quantity: 2 },
-                { code: 'ITEM003', name: '商品C', quantity: 1 },
-                { code: 'ITEM004', name: '商品D', quantity: 3 },
-                { code: 'ITEM005', name: '商品E', quantity: 1 }
-            ];
-            
-            this.renderItemsList();
-            this.updateProgress();
+
+        formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
         }
-        
-        renderItemsList() {
-            this.itemsList.innerHTML = this.targetItems.map(item => `
-                <div class="card qr-item-card" data-item-code="${item.code}">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center">
-                            <div class="qr-status-icon">
-                                <i class="fas fa-clock qr-pending"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <h6 class="mb-1">${item.name}</h6>
-                                <small class="text-muted">コード: ${item.code} | 数量: ${item.quantity}</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-        
+
         playBeep(type = 'success') {
-            // ビープ音（オプション）
             try {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioContext.createOscillator();
                 const gainNode = audioContext.createGain();
-                
+
                 oscillator.connect(gainNode);
                 gainNode.connect(audioContext.destination);
-                
+
                 oscillator.frequency.value = type === 'success' ? 800 : 400;
                 oscillator.type = 'sine';
-                
+
                 gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-                
+
                 oscillator.start(audioContext.currentTime);
                 oscillator.stop(audioContext.currentTime + 0.2);
             } catch (error) {
@@ -801,10 +953,10 @@
             }
         }
     }
-    
+
     // アプリケーション初期化
     document.addEventListener('DOMContentLoaded', () => {
-        window.qrInspectionApp = new Html5QRCodeInspection();
+        window.qrInspectionApp = new QRInspectionSystem();
     });
     </script>
 </body>

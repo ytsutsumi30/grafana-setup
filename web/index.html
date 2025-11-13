@@ -171,150 +171,10 @@
             margin-top: 1rem;
         }
         @media print {
-            .inspection-header,
             .inspection-actions,
             .btn,
-            .navbar,
-            #btn-print-shipments,
-            .col-lg-4 {
+            .navbar {
                 display: none !important;
-            }
-            
-            .col-lg-8 {
-                width: 100% !important;
-                max-width: 100% !important;
-            }
-            
-            /* A4縦に横幅広く、縦幅25%ずつレイアウト（4製品/ページ） */
-            #shipment-list {
-                display: flex;
-                flex-direction: column;
-            }
-            
-            .inspection-card {
-                width: 100% !important;
-                height: 25% !important;
-                min-height: 6.5cm !important;
-                max-height: 6.5cm !important;
-                page-break-inside: avoid;
-                box-shadow: none;
-                border: 1px solid #dee2e6;
-                margin-bottom: 0.3cm !important;
-                font-size: 0.7rem;
-                overflow: hidden;
-            }
-            
-            /* 4行ごとに改ページ */
-            .inspection-card:nth-child(4n+1) {
-                page-break-before: auto;
-            }
-            
-            .inspection-card:nth-child(4n) {
-                page-break-after: always;
-            }
-            
-            /* カード内を左右2カラムレイアウト */
-            .inspection-card .card-body {
-                padding: 0.4rem !important;
-                display: grid !important;
-                grid-template-columns: 1fr auto;
-                gap: 0.3rem;
-                align-items: start;
-                position: relative;
-            }
-            
-            /* QRコードを右上に絶対配置 */
-            .inspection-card [data-role="qr-code-container"] {
-                position: absolute !important;
-                top: 0.4rem;
-                right: 0.4rem;
-                text-align: center;
-            }
-            
-            /* QRコード直前のラベル（製品QRコード:）を非表示 */
-            .inspection-card [data-role="qr-code-container"]::before {
-                content: "製品QRコード";
-                display: block;
-                font-size: 0.6rem;
-                font-weight: bold;
-                margin-bottom: 0.2rem;
-                color: #333;
-            }
-            
-            /* QRコードラベル（クリックで...）を表示 */
-            .inspection-card [data-role="qr-code-container"] .small {
-                display: block !important;
-                font-size: 0.55rem !important;
-                margin-top: 0.1rem !important;
-            }
-            
-            /* 元の「製品QRコード:」ラベルを非表示 */
-            .inspection-card p strong {
-                display: inline;
-            }
-            
-            .inspection-card .col-md-6 > p:first-child {
-                display: none !important;
-            }
-            
-            /* 左側の情報エリアに余白を追加（QRコードと重ならないように） */
-            .inspection-card .row {
-                margin-right: 95px !important;
-            }
-            
-            /* タイトルと情報を左側に配置 */
-            .inspection-card h5 {
-                font-size: 0.85rem !important;
-                margin-bottom: 0.2rem !important;
-                font-weight: bold;
-            }
-            
-            .inspection-card p {
-                font-size: 0.65rem !important;
-                margin-bottom: 0.15rem !important;
-                line-height: 1.2;
-            }
-            
-            .inspection-card small {
-                font-size: 0.6rem !important;
-                margin-bottom: 0.1rem !important;
-                line-height: 1.2;
-            }
-            
-            .inspection-card .badge {
-                font-size: 0.6rem !important;
-                padding: 0.15rem 0.3rem !important;
-            }
-            
-            /* QRコードを縮小 */
-            .inspection-card [id^="qrcode-"] {
-                transform: scale(0.45);
-                transform-origin: top left;
-                margin-bottom: -70px;
-                margin-right: -70px;
-            }
-            
-            /* ボタンを非表示 */
-            .inspection-card .mt-3 {
-                display: none !important;
-            }
-            
-            h3 {
-                font-size: 1.1rem;
-                margin-bottom: 0.3rem;
-            }
-            
-            .badge {
-                border: 1px solid #6c757d;
-            }
-            
-            @page {
-                size: A4 portrait;
-                margin: 0.6cm 1.2cm;
-            }
-            
-            body {
-                background-color: white;
             }
         }
     </style>
@@ -357,9 +217,6 @@
                         </h3>
                         <span class="badge bg-secondary" id="pending-count">0件</span>
                     </div>
-                    <button class="btn btn-outline-primary btn-sm" id="btn-print-shipments">
-                        <i class="fas fa-print me-1"></i>印刷
-                    </button>
                 </div>
 
                 <div id="shipment-list" class="shipment-list">
