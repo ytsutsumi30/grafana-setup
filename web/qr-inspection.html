@@ -453,6 +453,13 @@
 
                 this.shippingData = data.shipping;
                 this.inventoryData = data.inventory;
+                
+                // 予測在庫を計算（出荷後の在庫）
+                if (this.inventoryData) {
+                    this.inventoryData.predicted_stock_after = 
+                        this.inventoryData.available_stock - this.shippingData.quantity;
+                }
+                
                 this.targetItems = data.components.map(comp => ({
                     id: comp.id,
                     code: comp.qr_code,
@@ -514,10 +521,10 @@
             document.getElementById('shipping-info-loading').style.display = 'none';
             document.getElementById('shipping-info-content').style.display = 'block';
 
-            document.getElementById('instruction-id').textContent = this.shippingData.instruction_id;
-            document.getElementById('product-name').textContent = this.shippingData.product_name;
-            document.getElementById('product-code').textContent = this.shippingData.product_code;
-            document.getElementById('shipping-quantity').textContent = this.shippingData.quantity.toLocaleString();
+            document.getElementById('instruction-id').textContent = this.shippingData.instruction_id || '未設定';
+            document.getElementById('product-name').textContent = this.shippingData.product_name || '未設定';
+            document.getElementById('product-code').textContent = this.shippingData.product_code || '未設定';
+            document.getElementById('shipping-quantity').textContent = (this.shippingData.quantity || 0).toLocaleString();
             document.getElementById('customer-name').textContent = this.shippingData.customer_name || '未設定';
             document.getElementById('delivery-location').textContent = this.shippingData.delivery_location_name || '未設定';
             document.getElementById('shipping-date').textContent = this.formatDate(this.shippingData.shipping_date);
@@ -536,17 +543,26 @@
         }
 
         renderInventoryInfo() {
-            if (!this.inventoryData) return;
+            if (!this.inventoryData) {
+                document.getElementById('inventory-info-loading').style.display = 'none';
+                document.getElementById('inventory-info-content').innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        在庫情報が登録されていません。
+                    </div>
+                `;
+                return;
+            }
 
             document.getElementById('inventory-info-loading').style.display = 'none';
             document.getElementById('inventory-info-content').style.display = 'block';
 
-            document.getElementById('current-stock').textContent = this.inventoryData.current_stock.toLocaleString();
-            document.getElementById('available-stock').textContent = this.inventoryData.available_stock.toLocaleString();
-            document.getElementById('predicted-stock').textContent = this.inventoryData.predicted_stock_after.toLocaleString();
+            document.getElementById('current-stock').textContent = (this.inventoryData.current_stock || 0).toLocaleString();
+            document.getElementById('available-stock').textContent = (this.inventoryData.available_stock || 0).toLocaleString();
+            document.getElementById('predicted-stock').textContent = (this.inventoryData.predicted_stock_after || 0).toLocaleString();
 
             const warningElement = document.getElementById('low-stock-warning');
-            if (this.inventoryData.predicted_stock_after < 10) {
+            if ((this.inventoryData.predicted_stock_after || 0) < 10) {
                 warningElement.style.display = 'block';
             } else {
                 warningElement.style.display = 'none';

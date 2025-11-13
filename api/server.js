@@ -1781,6 +1781,121 @@ app.get('/qr-inspections/:id', async (req, res) => {
     }
 });
 
+// QR検品用統合データ取得（出荷指示詳細+製品構成部品+在庫情報）
+app.get('/shipping-instructions/:id/qr-inspection-data', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. 出荷指示詳細を取得
+        const shippingResult = await pool.query(`
+            SELECT
+                si.id,
+                si.instruction_id,
+                si.quantity,
+                si.shipping_date,
+                si.customer_name,
+                si.priority,
+                si.status,
+                si.notes,
+                p.id as product_id,
+                p.product_code,
+                p.product_name,
+                p.description as product_description,
+                sl.location_name as shipping_location_name,
+                sl.address as shipping_location_address,
+                dl.location_name as delivery_location_name,
+                dl.address as delivery_location_address
+            FROM shipping_instructions si
+            JOIN products p ON si.product_id = p.id
+            LEFT JOIN shipping_locations sl ON si.shipping_location_id = sl.id
+            LEFT JOIN delivery_locations dl ON si.delivery_location_id = dl.id
+            WHERE si.id = $1
+        `, [id]);
+
+        if (shippingResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Shipping instruction not found' });
+        }
+
+        const shipping = shippingResult.rows[0];
+
+        // 2. 製品構成部品を取得
+        const componentsResult = await pool.query(`
+            SELECT
+                pc.id,
+                pc.component_type,
+                pc.component_name,
+                pc.qr_code,
+                pc.is_required
+            FROM product_components pc
+            WHERE pc.product_id = $1
+            ORDER BY
+                CASE pc.component_type
+                    WHEN 'main' THEN 1
+                    WHEN 'accessory' THEN 2
+                    WHEN 'documentation' THEN 3
+                    WHEN 'packaging' THEN 4
+                    ELSE 5
+                END,
+                pc.id
+        `, [shipping.product_id]);
+
+        // 3. 在庫情報を取得
+        let inventory = null;
+        try {
+            const inventoryResult = await pool.query(`
+                SELECT
+                    i.id,
+                    i.product_id,
+                    i.current_stock,
+                    i.reserved_stock,
+                    i.available_stock,
+                    i.location,
+                    i.last_updated
+                FROM inventory i
+                WHERE i.product_id = $1
+                LIMIT 1
+            `, [shipping.product_id]);
+
+            if (inventoryResult.rows.length > 0) {
+                inventory = inventoryResult.rows[0];
+            }
+        } catch (err) {
+            // 在庫テーブルがない場合はスキップ
+            logger.warn('Inventory table not found or query failed:', err.message);
+        }
+
+        // 4. 既存の検品レコードを確認（進行中のものがあれば）
+        const existingInspectionResult = await pool.query(`
+            SELECT
+                qi.id,
+                qi.status,
+                qi.inspector_name,
+                qi.created_at
+            FROM qr_inspections qi
+            WHERE qi.shipping_instruction_id = $1
+              AND qi.status = 'in_progress'
+            ORDER BY qi.created_at DESC
+            LIMIT 1
+        `, [id]);
+
+        const existingInspection = existingInspectionResult.rows.length > 0 
+            ? existingInspectionResult.rows[0] 
+            : null;
+
+        // 5. レスポンスを返す
+        res.json({
+            shipping: shipping,
+            components: componentsResult.rows,
+            inventory: inventory,
+            existingInspection: existingInspection
+        });
+
+    } catch (error) {
+        logger.error('Error fetching QR inspection data:', error);
+        res.status(500).json({ error: 'Internal server error', message: error.message });
+    }
+});
+
 // === 出荷指示 CRUD API ===
 
 // 出荷指示作成バリデーションスキーマ
