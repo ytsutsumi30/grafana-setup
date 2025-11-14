@@ -147,7 +147,7 @@ function initializeEventListeners() {
         saveDraftButton.addEventListener('click', () => submitInspection({ isDraft: true }));
     }
     if (printDetailsButton) {
-        printDetailsButton.addEventListener('click', () => window.print());
+        printDetailsButton.addEventListener('click', printShipmentDetail);
     }
     if (printShipmentsButton) {
         printShipmentsButton.addEventListener('click', printShipmentList);
@@ -1540,3 +1540,168 @@ function printShipmentList() {
 
 // グローバルスコープに公開
 window.printPendingShipments = printShipmentList;
+
+// 出荷指示詳細印刷機能
+function printShipmentDetail() {
+    if (!currentShipment) {
+        showToast('印刷する出荷指示が選択されていません', 'warning');
+        return;
+    }
+    
+    const printArea = document.getElementById('printDetailArea');
+    if (!printArea) {
+        showToast('印刷エリアが見つかりません', 'danger');
+        return;
+    }
+    
+    // 印刷日時
+    const now = new Date();
+    const printDate = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+    const printTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    
+    // ステータスの日本語表示
+    const statusMap = {
+        'pending': '検品待ち',
+        'in_progress': '検品中',
+        'completed': '完了',
+        'shipped': '出荷済み'
+    };
+    const statusText = statusMap[currentShipment.status] || currentShipment.status;
+    
+    // 優先度の日本語表示
+    const priorityMap = {
+        'high': '高',
+        'normal': '通常',
+        'low': '低'
+    };
+    const priorityText = priorityMap[currentShipment.priority] || currentShipment.priority;
+    
+    // 印刷用HTML生成
+    const printHTML = `
+        <div class="print-detail-header">
+            <div class="print-detail-title">出荷指示詳細</div>
+            <div>印刷日時: ${printDate} ${printTime}</div>
+        </div>
+        
+        <div class="print-detail-section">
+            <div class="print-detail-section-title">基本情報</div>
+            <table class="print-detail-table">
+                <tr>
+                    <th>出荷指示番号</th>
+                    <td>${escapeHtml(currentShipment.instruction_id)}</td>
+                </tr>
+                <tr>
+                    <th>作成日時</th>
+                    <td>${formatDate(currentShipment.created_at)}</td>
+                </tr>
+                <tr>
+                    <th>ステータス</th>
+                    <td>${statusText}</td>
+                </tr>
+                <tr>
+                    <th>優先度</th>
+                    <td>${priorityText}</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="print-detail-section">
+            <div class="print-detail-section-title">製品情報</div>
+            <table class="print-detail-table">
+                <tr>
+                    <th>製品コード</th>
+                    <td>${escapeHtml(currentShipment.product_code || '-')}</td>
+                </tr>
+                <tr>
+                    <th>製品名</th>
+                    <td>${escapeHtml(currentShipment.product_name || '-')}</td>
+                </tr>
+                <tr>
+                    <th>出荷数量</th>
+                    <td>${currentShipment.quantity ? currentShipment.quantity.toLocaleString() : '-'} 個</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="print-detail-section">
+            <div class="print-detail-section-title">配送情報</div>
+            <table class="print-detail-table">
+                <tr>
+                    <th>出荷予定日</th>
+                    <td>${formatDate(currentShipment.shipping_date)}</td>
+                </tr>
+                <tr>
+                    <th>配送先</th>
+                    <td>${escapeHtml(currentShipment.delivery_location_name || '未設定')}</td>
+                </tr>
+                <tr>
+                    <th>顧客名</th>
+                    <td>${escapeHtml(currentShipment.customer_name || '-')}</td>
+                </tr>
+                <tr>
+                    <th>配送方法</th>
+                    <td>${escapeHtml(currentShipment.delivery_method || '未設定')}</td>
+                </tr>
+                <tr>
+                    <th>配送業者</th>
+                    <td>${escapeHtml(currentShipment.delivery_contact || '未設定')}</td>
+                </tr>
+                <tr>
+                    <th>追跡番号</th>
+                    <td>${escapeHtml(currentShipment.tracking_number || '-')}</td>
+                </tr>
+            </table>
+        </div>
+        
+        ${currentShipment.notes ? `
+        <div class="print-detail-section">
+            <div class="print-detail-section-title">備考</div>
+            <div class="print-detail-notes">${escapeHtml(currentShipment.notes)}</div>
+        </div>
+        ` : ''}
+        
+        <div class="print-detail-footer">
+            <table style="width: 100%;">
+                <tr>
+                    <td style="width: 50%;">
+                        <div><strong>検品者</strong></div>
+                        <div style="margin-top: 5mm;">氏名: _______________________</div>
+                    </td>
+                    <td style="width: 50%; text-align: right;">
+                        <div><strong>承認印</strong></div>
+                        <div style="border: 1px solid #000; width: 60mm; height: 40mm; display: inline-block; margin-top: 5mm;"></div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    `;
+    
+    // 印刷エリアに内容を設定
+    printArea.innerHTML = printHTML;
+    
+    // bodyにクラスを追加して印刷モードに
+    document.body.classList.add('printing-detail');
+    
+    // 印刷実行
+    const originalTitle = document.title;
+    document.title = `出荷指示詳細 - ${currentShipment.instruction_id}`;
+    
+    window.print();
+    
+    // 印刷後、元に戻す
+    setTimeout(() => {
+        document.body.classList.remove('printing-detail');
+        document.title = originalTitle;
+        printArea.innerHTML = '';
+    }, 100);
+    
+    showToast('印刷プレビューを開きました', 'info');
+}
+
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
