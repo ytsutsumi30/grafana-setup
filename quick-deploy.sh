@@ -108,8 +108,11 @@ show_header
 # 再起動のみの場合
 if [ "$RESTART_ONLY" = true ]; then
     log_info "サービスを再起動しています..."
-    ssh -i "$KEY_PATH" $EC2_USER@$EC2_IP \
-        "cd $REMOTE_PRIMARY_DIR && docker-compose restart"
+    ssh -i "$KEY_PATH" $EC2_USER@$EC2_IP << 'EOF'
+cd /opt/production-management
+source ~/.bashrc
+docker-compose restart
+EOF
     log_success "サービス再起動完了"
     
     # ヘルスチェック
@@ -212,6 +215,8 @@ if [ "$NO_RESTART" = false ]; then
     log_info "サービスを再起動しています..."
     ssh -i "$KEY_PATH" $EC2_USER@$EC2_IP << 'EOF'
 cd /opt/production-management
+# 環境変数を読み込んでからDocker Composeを実行
+source ~/.bashrc
 docker-compose restart
 EOF
     log_success "サービス再起動完了"
