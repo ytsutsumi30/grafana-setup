@@ -495,7 +495,8 @@
 
         async loadInspectors() {
             try {
-                const response = await fetch(`${API_BASE_URL}/inspectors/recent?limit=20`);
+                // 検品者マスタから有効な検品者を取得
+                const response = await fetch(`${API_BASE_URL}/inspectors?is_active=true`);
 
                 if (!response.ok) {
                     throw new Error('検品者リストの取得に失敗しました');
@@ -505,8 +506,10 @@
 
                 const datalist = document.getElementById('inspector-list');
                 datalist.innerHTML = inspectors.map(inspector =>
-                    `<option value="${inspector.name}">${inspector.name} (${inspector.inspection_count}件)</option>`
+                    `<option value="${inspector.inspector_name}">${inspector.inspector_name} (${inspector.department || '部署なし'})</option>`
                 ).join('');
+
+                console.log(`Loaded ${inspectors.length} active inspectors from master data`);
 
             } catch (error) {
                 console.error('Failed to load inspectors:', error);
