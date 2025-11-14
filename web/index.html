@@ -273,31 +273,37 @@
             }
             
             /* 詳細印刷用スタイル */
+            @page {
+                size: A4 portrait;
+                margin: 15mm;
+            }
+            
             .print-detail-header {
                 text-align: center;
-                border-bottom: 3px solid #000;
-                padding-bottom: 10mm;
-                margin-bottom: 10mm;
+                border-bottom: 2px solid #000;
+                padding-bottom: 3mm;
+                margin-bottom: 5mm;
             }
             
             .print-detail-title {
-                font-size: 24pt;
+                font-size: 18pt;
                 font-weight: bold;
-                margin-bottom: 5mm;
+                margin-bottom: 2mm;
             }
             
             .print-detail-table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 10mm;
+                margin-bottom: 4mm;
             }
             
             .print-detail-table th,
             .print-detail-table td {
-                padding: 5mm;
+                padding: 2mm 3mm;
                 border: 1px solid #000;
                 text-align: left;
-                font-size: 11pt;
+                font-size: 9pt;
+                line-height: 1.3;
             }
             
             .print-detail-table th {
@@ -307,29 +313,30 @@
             }
             
             .print-detail-section {
-                margin-bottom: 8mm;
+                margin-bottom: 4mm;
             }
             
             .print-detail-section-title {
-                font-size: 14pt;
+                font-size: 11pt;
                 font-weight: bold;
-                border-bottom: 2px solid #333;
-                padding-bottom: 2mm;
-                margin-bottom: 4mm;
+                border-bottom: 1.5px solid #333;
+                padding-bottom: 1mm;
+                margin-bottom: 2mm;
             }
             
             .print-detail-notes {
                 border: 1px solid #ccc;
-                padding: 5mm;
-                min-height: 30mm;
-                margin-top: 10mm;
+                padding: 3mm;
+                min-height: 20mm;
+                margin-top: 4mm;
+                font-size: 9pt;
             }
             
             .print-detail-footer {
-                margin-top: 15mm;
-                padding-top: 5mm;
+                margin-top: 8mm;
+                padding-top: 3mm;
                 border-top: 1px solid #000;
-                font-size: 10pt;
+                font-size: 9pt;
             }
             .col-md-8 {
                 flex: 0 0 75%;

@@ -1581,7 +1581,7 @@ function printShipmentDetail() {
     const printHTML = `
         <div class="print-detail-header">
             <div class="print-detail-title">出荷指示詳細</div>
-            <div>印刷日時: ${printDate} ${printTime}</div>
+            <div style="font-size: 9pt;">印刷日時: ${printDate} ${printTime}</div>
         </div>
         
         <div class="print-detail-section">
@@ -1590,16 +1590,12 @@ function printShipmentDetail() {
                 <tr>
                     <th>出荷指示番号</th>
                     <td>${escapeHtml(currentShipment.instruction_id)}</td>
-                </tr>
-                <tr>
                     <th>作成日時</th>
                     <td>${formatDate(currentShipment.created_at)}</td>
                 </tr>
                 <tr>
                     <th>ステータス</th>
                     <td>${statusText}</td>
-                </tr>
-                <tr>
                     <th>優先度</th>
                     <td>${priorityText}</td>
                 </tr>
@@ -1612,14 +1608,12 @@ function printShipmentDetail() {
                 <tr>
                     <th>製品コード</th>
                     <td>${escapeHtml(currentShipment.product_code || '-')}</td>
-                </tr>
-                <tr>
                     <th>製品名</th>
-                    <td>${escapeHtml(currentShipment.product_name || '-')}</td>
+                    <td colspan="3">${escapeHtml(currentShipment.product_name || '-')}</td>
                 </tr>
                 <tr>
                     <th>出荷数量</th>
-                    <td>${currentShipment.quantity ? currentShipment.quantity.toLocaleString() : '-'} 個</td>
+                    <td colspan="3">${currentShipment.quantity ? currentShipment.quantity.toLocaleString() : '-'} 個</td>
                 </tr>
             </table>
         </div>
@@ -1630,24 +1624,18 @@ function printShipmentDetail() {
                 <tr>
                     <th>出荷予定日</th>
                     <td>${formatDate(currentShipment.shipping_date)}</td>
-                </tr>
-                <tr>
                     <th>配送先</th>
                     <td>${escapeHtml(currentShipment.delivery_location_name || '未設定')}</td>
                 </tr>
                 <tr>
                     <th>顧客名</th>
                     <td>${escapeHtml(currentShipment.customer_name || '-')}</td>
-                </tr>
-                <tr>
                     <th>配送方法</th>
                     <td>${escapeHtml(currentShipment.delivery_method || '未設定')}</td>
                 </tr>
                 <tr>
                     <th>配送業者</th>
                     <td>${escapeHtml(currentShipment.delivery_contact || '未設定')}</td>
-                </tr>
-                <tr>
                     <th>追跡番号</th>
                     <td>${escapeHtml(currentShipment.tracking_number || '-')}</td>
                 </tr>
@@ -1662,15 +1650,16 @@ function printShipmentDetail() {
         ` : ''}
         
         <div class="print-detail-footer">
-            <table style="width: 100%;">
+            <table style="width: 100%; border-collapse: collapse;">
                 <tr>
-                    <td style="width: 50%;">
-                        <div><strong>検品者</strong></div>
-                        <div style="margin-top: 5mm;">氏名: _______________________</div>
+                    <td style="width: 50%; padding-right: 5mm; vertical-align: top;">
+                        <div style="font-weight: bold; margin-bottom: 2mm;">検品者</div>
+                        <div>氏名: _______________________</div>
+                        <div style="margin-top: 2mm;">日付: _______________________</div>
                     </td>
-                    <td style="width: 50%; text-align: right;">
-                        <div><strong>承認印</strong></div>
-                        <div style="border: 1px solid #000; width: 60mm; height: 40mm; display: inline-block; margin-top: 5mm;"></div>
+                    <td style="width: 50%; text-align: right; vertical-align: top;">
+                        <div style="font-weight: bold; margin-bottom: 2mm;">承認印</div>
+                        <div style="border: 1px solid #000; width: 40mm; height: 25mm; display: inline-block;"></div>
                     </td>
                 </tr>
             </table>
