@@ -4703,6 +4703,214 @@ app.post('/monitoring/generate-sample-data', async (req, res) => {
     }
 });
 
+// === データベース バックアップ・復元 API ===
+
+// データベース全体のバックアップSQLを生成
+app.get('/database/backup', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        logger.info('Database backup requested');
+
+        // バックアップ対象テーブルの順序（外部キー制約を考慮）
+        const tables = [
+            'products',
+            'shipping_locations',
+            'delivery_locations',
+            'production_plans',
+            'production_records',
+            'inventory',
+            'inspections',
+            'shipping_instructions',
+            'shipping_inspections',
+            'product_components',
+            'qr_inspections',
+            'qr_inspection_details',
+            'inspectors',
+            'inventory_snapshots',
+            'performance_metrics',
+            'system_alerts'
+        ];
+
+        let sqlOutput = '';
+
+        // SQLヘッダー
+        sqlOutput += `-- Production Management System Database Backup\n`;
+        sqlOutput += `-- Generated: ${new Date().toISOString()}\n`;
+        sqlOutput += `-- Database: production_db\n\n`;
+        sqlOutput += `BEGIN;\n\n`;
+
+        // 外部キー制約を一時的に無効化
+        sqlOutput += `-- Disable foreign key constraints\n`;
+        sqlOutput += `SET session_replication_role = 'replica';\n\n`;
+
+        // 各テーブルのデータをバックアップ
+        for (const table of tables) {
+            try {
+                // テーブルが存在するか確認
+                const tableCheck = await client.query(`
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = $1
+                    )
+                `, [table]);
+
+                if (!tableCheck.rows[0].exists) {
+                    logger.warn(`Table ${table} does not exist, skipping...`);
+                    continue;
+                }
+
+                // テーブルのカラム情報を取得
+                const columnsResult = await client.query(`
+                    SELECT column_name, data_type, is_generated
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = $1
+                    ORDER BY ordinal_position
+                `, [table]);
+
+                // GENERATED列を除外
+                const insertableColumns = columnsResult.rows
+                    .filter(col => col.is_generated === 'NEVER')
+                    .map(col => col.column_name);
+
+                if (insertableColumns.length === 0) {
+                    logger.warn(`Table ${table} has no insertable columns, skipping...`);
+                    continue;
+                }
+
+                // データを取得
+                const dataResult = await client.query(`
+                    SELECT ${insertableColumns.map(col => `"${col}"`).join(', ')}
+                    FROM ${table}
+                    ORDER BY id
+                `);
+
+                if (dataResult.rows.length === 0) {
+                    sqlOutput += `-- Table: ${table} (no data)\n\n`;
+                    continue;
+                }
+
+                sqlOutput += `-- Table: ${table} (${dataResult.rows.length} rows)\n`;
+                sqlOutput += `DELETE FROM ${table};\n`;
+
+                // シーケンスのリセット（idカラムがある場合）
+                if (insertableColumns.includes('id')) {
+                    const maxIdResult = await client.query(`SELECT MAX(id) as max_id FROM ${table}`);
+                    const maxId = maxIdResult.rows[0].max_id || 0;
+                    if (maxId > 0) {
+                        sqlOutput += `SELECT setval('${table}_id_seq', ${maxId}, true);\n`;
+                    }
+                }
+
+                // INSERT文を生成
+                for (const row of dataResult.rows) {
+                    const values = insertableColumns.map(col => {
+                        const value = row[col];
+                        if (value === null) {
+                            return 'NULL';
+                        } else if (typeof value === 'string') {
+                            return `'${value.replace(/'/g, "''")}'`;
+                        } else if (value instanceof Date) {
+                            return `'${value.toISOString()}'`;
+                        } else if (typeof value === 'boolean') {
+                            return value ? 'true' : 'false';
+                        } else if (typeof value === 'object') {
+                            return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
+                        } else {
+                            return value;
+                        }
+                    });
+
+                    sqlOutput += `INSERT INTO ${table} (${insertableColumns.map(col => `"${col}"`).join(', ')}) VALUES (${values.join(', ')});\n`;
+                }
+
+                sqlOutput += `\n`;
+
+            } catch (tableError) {
+                logger.error(`Error backing up table ${table}:`, tableError);
+                sqlOutput += `-- Error backing up table ${table}: ${tableError.message}\n\n`;
+            }
+        }
+
+        // 外部キー制約を再有効化
+        sqlOutput += `-- Re-enable foreign key constraints\n`;
+        sqlOutput += `SET session_replication_role = 'origin';\n\n`;
+
+        sqlOutput += `COMMIT;\n`;
+        sqlOutput += `\n-- Backup completed\n`;
+
+        // ファイル名を生成
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+        const filename = `production_db_backup_${timestamp}.sql`;
+
+        // SQLファイルとして返す
+        res.setHeader('Content-Type', 'application/sql');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(sqlOutput);
+
+        logger.info(`Database backup generated: ${filename}`);
+
+    } catch (error) {
+        logger.error('Error generating database backup:', error);
+        res.status(500).json({ error: 'Failed to generate backup', details: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// データベース復元
+app.post('/database/restore', async (req, res) => {
+    const client = await pool.connect();
+
+    try {
+        logger.info('Database restore requested');
+
+        // リクエストボディからSQLを取得
+        const { sql } = req.body;
+
+        if (!sql || typeof sql !== 'string') {
+            return res.status(400).json({ error: 'SQL content is required' });
+        }
+
+        // SQLの長さチェック（10MBまで）
+        if (sql.length > 10 * 1024 * 1024) {
+            return res.status(400).json({ error: 'SQL file is too large (max 10MB)' });
+        }
+
+        logger.info(`Restoring database from SQL (${sql.length} bytes)`);
+
+        // トランザクション開始
+        await client.query('BEGIN');
+
+        try {
+            // SQLを実行（複数ステートメント対応）
+            await client.query(sql);
+
+            await client.query('COMMIT');
+
+            logger.info('Database restore completed successfully');
+            res.json({
+                success: true,
+                message: 'データベースを復元しました',
+                bytes: sql.length
+            });
+
+        } catch (executeError) {
+            await client.query('ROLLBACK');
+            throw executeError;
+        }
+
+    } catch (error) {
+        logger.error('Error restoring database:', error);
+        res.status(500).json({
+            error: 'データベースの復元に失敗しました',
+            details: error.message
+        });
+    } finally {
+        client.release();
+    }
+});
+
 // エラーハンドリング
 app.use((err, req, res, next) => {
     logger.error('Unhandled error:', err);
