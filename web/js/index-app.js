@@ -510,7 +510,15 @@ function populateInspectionForm(detail) {
                     <div class="card-body">
                         <div class="mb-3">
                             <label class="form-label" for="inspector">検品者名 *</label>
-                            <input type="text" class="form-control" id="inspector" required>
+                            <input type="text" class="form-control" id="inspector"
+                                   list="inspector-datalist"
+                                   placeholder="検品者名を入力または選択してください"
+                                   maxlength="100"
+                                   required>
+                            <datalist id="inspector-datalist">
+                                <!-- 検品者リストがここに動的に追加されます -->
+                            </datalist>
+                            <small class="text-muted">マスタから選択するか、新規の名前を入力できます</small>
                         </div>
                         <div class="row g-3">
                             <div class="col-6">
@@ -578,6 +586,7 @@ function populateInspectionForm(detail) {
     `;
 
     setupQuantityAutoCalculation();
+    loadInspectorsList();
 }
 
 function setupQuantityAutoCalculation() {
@@ -595,6 +604,29 @@ function setupQuantityAutoCalculation() {
 
     inspectedInput.addEventListener('input', updateFailed);
     passedInput.addEventListener('input', updateFailed);
+}
+
+async function loadInspectorsList() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/inspectors/recent?limit=20`);
+
+        if (!response.ok) {
+            console.error('検品者リストの取得に失敗しました');
+            return;
+        }
+
+        const inspectors = await response.json();
+        const datalist = document.getElementById('inspector-datalist');
+
+        if (datalist) {
+            datalist.innerHTML = inspectors.map(inspector =>
+                `<option value="${inspector.name}">${inspector.name} (${inspector.inspection_count}件)</option>`
+            ).join('');
+        }
+    } catch (error) {
+        console.error('Failed to load inspectors:', error);
+        // エラー時でも手入力は可能（datalistは空のまま）
+    }
 }
 
 function clearInspectionForm() {

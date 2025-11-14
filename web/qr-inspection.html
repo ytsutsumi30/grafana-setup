@@ -204,14 +204,20 @@
                         </h5>
                     </div>
                     <div class="card-body">
-                        <!-- 検品者名選択 -->
+                        <!-- 検品者名入力 -->
                         <div class="mb-3">
                             <label for="qr-inspector-name" class="form-label">
                                 <i class="fas fa-user me-1"></i>検品者名 <span class="text-danger">*</span>
                             </label>
-                            <select class="form-select" id="qr-inspector-name" required>
-                                <option value="">読み込み中...</option>
-                            </select>
+                            <input type="text" class="form-control" id="qr-inspector-name"
+                                   list="inspector-list"
+                                   placeholder="検品者名を入力または選択してください"
+                                   maxlength="100"
+                                   required>
+                            <datalist id="inspector-list">
+                                <!-- 検品者リストがここに動的に追加されます -->
+                            </datalist>
+                            <small class="text-muted">マスタから選択するか、新規の名前を入力できます</small>
                         </div>
 
                         <!-- スキャナーエリア -->
@@ -490,21 +496,18 @@
 
                 const inspectors = await response.json();
 
-                const select = this.inspectorNameInput;
-                select.innerHTML = '<option value="">--- 選択してください ---</option>' +
-                    inspectors.map(inspector =>
-                        `<option value="${inspector.name}">${inspector.name} (${inspector.inspection_count}件)</option>`
-                    ).join('');
+                const datalist = document.getElementById('inspector-list');
+                datalist.innerHTML = inspectors.map(inspector =>
+                    `<option value="${inspector.name}">${inspector.name} (${inspector.inspection_count}件)</option>`
+                ).join('');
 
             } catch (error) {
                 console.error('Failed to load inspectors:', error);
-                // エラー時はデフォルトオプションを設定
-                this.inspectorNameInput.innerHTML = '<option value="">--- 手入力してください ---</option>';
-                this.inspectorNameInput.setAttribute('list', 'inspector-datalist');
-                // datalist を追加して手入力を可能にする
-                const datalist = document.createElement('datalist');
-                datalist.id = 'inspector-datalist';
-                this.inspectorNameInput.parentElement.appendChild(datalist);
+                // エラー時でも手入力は可能（datalistは空のまま）
+                const datalist = document.getElementById('inspector-list');
+                if (datalist) {
+                    datalist.innerHTML = '';
+                }
             }
         }
 
