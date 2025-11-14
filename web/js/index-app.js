@@ -734,6 +734,7 @@ async function submitInspection({ isDraft }) {
 async function openDetails(item) {
     try {
         const detail = await fetchShipmentDetail(item.id);
+        currentShipment = detail; // 印刷用に現在の出荷指示を保存
         populateDetailModal(detail);
         if (detailModal) {
             detailModal.show();
