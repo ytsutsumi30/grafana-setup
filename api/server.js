@@ -868,7 +868,7 @@ app.get('/shipping-instructions', async (req, res) => {
             query += ' WHERE ' + conditions.join(' AND ');
         }
 
-        query += ' ORDER BY si.created_at DESC';
+        query += ' ORDER BY si.instruction_id ASC';
 
         const result = await pool.query(query, params);
         res.json(result.rows);
