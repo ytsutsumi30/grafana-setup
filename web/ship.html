@@ -100,8 +100,42 @@
         @media print {
             .inspection-actions,
             .btn,
-            .navbar {
+            .navbar,
+            .inspection-header {
                 display: none !important;
+            }
+            body {
+                background-color: white;
+            }
+            .inspection-card {
+                page-break-inside: avoid;
+                box-shadow: none;
+                border: 1px solid #dee2e6;
+            }
+            .card-header {
+                background-color: #f8f9fa !important;
+                color: black !important;
+            }
+            h3 {
+                margin-top: 0;
+                padding-top: 0;
+            }
+        }
+        .print-header {
+            display: none;
+        }
+        @media print {
+            .print-header {
+                display: block;
+                text-align: center;
+                margin-bottom: 2rem;
+                padding-bottom: 1rem;
+                border-bottom: 2px solid #000;
+            }
+            .print-date {
+                text-align: right;
+                font-size: 0.9rem;
+                margin-bottom: 1rem;
             }
         }
     </style>
@@ -118,6 +152,9 @@
                     <p class="mb-0 mt-2">品質管理・出荷前最終検査</p>
                 </div>
                 <div class="col-auto">
+                    <button class="btn btn-light btn-lg me-2" onclick="printPendingList()">
+                        <i class="fas fa-print me-2"></i>印刷
+                    </button>
                     <button class="btn btn-light btn-lg" onclick="window.location.href='index.html'">
                         <i class="fas fa-home me-2"></i>メインシステム
                     </button>
@@ -127,6 +164,12 @@
     </div>
 
     <div class="container">
+        <!-- 印刷用ヘッダー（印刷時のみ表示） -->
+        <div class="print-header">
+            <h2>検品待ち出荷指示一覧</h2>
+            <p class="print-date">印刷日時: <span id="print-datetime"></span></p>
+        </div>
+
         <!-- 検品対象一覧 -->
         <div class="row">
             <div class="col-lg-8">
@@ -427,6 +470,22 @@
     <script>
         // API設定
         const API_BASE_URL = '/api';
+        
+        // 印刷機能
+        function printPendingList() {
+            // 印刷日時を設定
+            const now = new Date();
+            const dateTimeStr = now.getFullYear() + '年' + 
+                              (now.getMonth() + 1) + '月' + 
+                              now.getDate() + '日 ' +
+                              now.getHours().toString().padStart(2, '0') + ':' +
+                              now.getMinutes().toString().padStart(2, '0');
+            
+            document.getElementById('print-datetime').textContent = dateTimeStr;
+            
+            // 印刷実行
+            window.print();
+        }
         
         // 検品開始
         function startInspection(shipmentId) {

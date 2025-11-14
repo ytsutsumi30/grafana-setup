@@ -380,20 +380,20 @@ function createShipmentCard(item) {
         </div>
         <div class="card-body">
             <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-8">
                     <p><strong>製品:</strong> ${item.product_name} (${item.product_code})</p>
                     <p><strong>数量:</strong> <span class="quantity-display">${item.quantity.toLocaleString()}個</span></p>
                     <p><strong>顧客:</strong> ${item.customer_name || '未設定'}</p>
                     <p><strong>出荷日:</strong> ${shippingDate}</p>
-                </div>
-                <div class="col-md-6">
-                    <p><strong>製品QRコード:</strong></p>
-                    <div class="text-center" style="cursor: pointer;" data-role="qr-code-container">
-                        <div id="qrcode-${item.id}" style="display: inline-block;"></div>
-                        <p class="small text-muted mt-1">クリックでQR検品画面へ</p>
-                    </div>
-                    <p class="mt-2"><strong>配送先:</strong> ${item.delivery_location_name || '未設定'}</p>
+                    <p><strong>配送先:</strong> ${item.delivery_location_name || '未設定'}</p>
                     <p><strong>特記事項:</strong> ${item.notes || 'なし'}</p>
+                </div>
+                <div class="col-md-4 text-center qr-code-section">
+                    <p class="mb-1 small"><strong>製品QRコード:</strong></p>
+                    <div style="cursor: pointer;" data-role="qr-code-container">
+                        <div id="qrcode-${item.id}" style="display: inline-block;"></div>
+                        <p class="small text-muted mt-1 d-print-none">クリックでQR検品</p>
+                    </div>
                 </div>
             </div>
             <div class="mt-3 d-flex flex-wrap gap-2">
@@ -1476,12 +1476,24 @@ function showToast(message, type = 'info', duration = 4000) {
 
 // 出荷指示リスト印刷機能
 function printShipmentList() {
+    // 印刷日時を設定
+    const now = new Date();
+    const dateTimeStr = now.getFullYear() + '年' + 
+                      (now.getMonth() + 1) + '月' + 
+                      now.getDate() + '日 ' +
+                      now.getHours().toString().padStart(2, '0') + ':' +
+                      now.getMinutes().toString().padStart(2, '0');
+    
+    const printDateElement = document.getElementById('print-datetime');
+    if (printDateElement) {
+        printDateElement.textContent = dateTimeStr;
+    }
+    
     // 印刷前の準備
     const originalTitle = document.title;
-    const printDate = new Date().toLocaleString('ja-JP');
     
     // 印刷用タイトルを設定
-    document.title = `検品待ち出荷指示一覧 - ${printDate}`;
+    document.title = `検品待ち出荷指示一覧 - ${dateTimeStr}`;
     
     // 印刷ダイアログを表示
     window.print();
@@ -1493,3 +1505,6 @@ function printShipmentList() {
     
     showToast('印刷プレビューを開きました', 'info');
 }
+
+// グローバルスコープに公開
+window.printPendingShipments = printShipmentList;

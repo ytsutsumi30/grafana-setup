@@ -171,11 +171,129 @@
             margin-top: 1rem;
         }
         @media print {
+            body {
+                background-color: white;
+            }
+            .inspection-header,
             .inspection-actions,
             .btn,
-            .navbar {
+            .navbar,
+            .col-lg-4,
+            #shipment-loading {
                 display: none !important;
             }
+            .container {
+                max-width: 100%;
+                padding: 0;
+            }
+            .col-lg-8 {
+                flex: 0 0 100%;
+                max-width: 100%;
+            }
+            .inspection-card {
+                page-break-inside: avoid;
+                box-shadow: none;
+                border: 1px solid #dee2e6;
+                margin-bottom: 0.3rem;
+                border-radius: 0.25rem;
+                font-size: 0.75rem;
+            }
+            .card-header {
+                background-color: #f8f9fa !important;
+                color: black !important;
+                padding: 0.3rem 0.5rem;
+            }
+            .card-header h5 {
+                font-size: 0.9rem;
+                margin-bottom: 0;
+            }
+            .card-body {
+                padding: 0.3rem 0.5rem;
+            }
+            .card-body p {
+                margin-bottom: 0.15rem;
+                font-size: 0.7rem;
+                line-height: 1.3;
+            }
+            .card-body .row {
+                margin-left: 0;
+                margin-right: 0;
+            }
+            .card-body .col-md-8,
+            .card-body .col-md-4 {
+                padding-left: 0.25rem;
+                padding-right: 0.25rem;
+            }
+            .qr-code-section {
+                position: absolute;
+                top: 0.3rem;
+                right: 0.5rem;
+                width: auto !important;
+                flex: none !important;
+            }
+            .qr-code-section p {
+                font-size: 0.6rem;
+                margin-bottom: 0.1rem;
+            }
+            .qr-code-section #qrcode-1,
+            .qr-code-section #qrcode-2,
+            .qr-code-section #qrcode-3,
+            .qr-code-section #qrcode-4,
+            .qr-code-section #qrcode-5,
+            .qr-code-section div[id^="qrcode-"] {
+                width: 60px !important;
+                height: 60px !important;
+            }
+            .qr-code-section img,
+            .qr-code-section canvas {
+                width: 60px !important;
+                height: 60px !important;
+            }
+            .col-md-8 {
+                flex: 0 0 75%;
+                max-width: 75%;
+            }
+            .status-badge {
+                font-size: 0.6rem;
+                padding: 0.15rem 0.4rem;
+            }
+            .quantity-display {
+                font-size: 0.75rem;
+            }
+            h3 {
+                margin-top: 0;
+                padding-top: 0;
+                font-size: 1.1rem;
+            }
+            /* A4縦で最大化 */
+            @page {
+                size: A4 portrait;
+                margin: 0.8cm 1cm;
+            }
+            .shipment-list {
+                display: flex;
+                flex-direction: column;
+            }
+            .print-header {
+                display: block !important;
+                text-align: center;
+                margin-bottom: 0.3rem;
+                padding-bottom: 0.3rem;
+                border-bottom: 2px solid #000;
+            }
+            .print-title {
+                font-size: 1.3rem;
+                font-weight: bold;
+                margin-bottom: 0.1rem;
+            }
+            .print-date {
+                text-align: right;
+                font-size: 0.65rem;
+                margin-bottom: 0.1rem;
+            }
+        }
+        .print-header {
+            display: none;
         }
     </style>
 </head>
@@ -192,6 +310,9 @@
                 </div>
                 <div class="col-auto text-end">
                     <div id="app-build-info" class="text-white-50 small mb-2">コード修正日時: 読み込み中...</div>
+                    <button class="btn btn-light btn-lg me-2" onclick="printPendingShipments()">
+                        <i class="fas fa-print me-2"></i>印刷
+                    </button>
                     <button class="btn btn-primary btn-lg me-2" onclick="window.open('qr-inspection3.html', '_blank')">
                         <i class="fas fa-qrcode me-2"></i>QRコード読み取り
                     </button>
@@ -207,6 +328,12 @@
     </div>
 
     <div class="container">
+        <!-- 印刷用ヘッダー（印刷時のみ表示） -->
+        <div class="print-header">
+            <div class="print-title">検品待ち出荷指示一覧</div>
+            <div class="print-date">印刷日時: <span id="print-datetime"></span></div>
+        </div>
+
         <!-- 検品対象一覧 -->
         <div class="row">
             <div class="col-lg-8">
