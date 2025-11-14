@@ -664,12 +664,24 @@ check_status() {
     if [ "$ec2_state" = "running" ] && [ -n "$ec2_ip" ]; then
         echo ""
         echo "🌐 Application Health:"
+        
+        # HTTP チェック (EC2 IP)
         local http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://$ec2_ip" 2>/dev/null || echo "000")
         if [[ "$http_code" =~ ^(200|301|302)$ ]]; then
-            echo -e "  ${GREEN}● Healthy${NC} (HTTP $http_code)"
-            echo "  URL: http://$ec2_ip"
+            echo -e "  ${GREEN}● HTTP${NC} (HTTP $http_code)"
+            echo "    http://$ec2_ip"
         else
-            echo -e "  ${RED}● Unhealthy${NC} (HTTP $http_code)"
+            echo -e "  ${RED}● HTTP${NC} (HTTP $http_code)"
+        fi
+        
+        # HTTPS チェック (ドメイン)
+        local https_code=$(curl -s -o /dev/null -w "%{http_code}" "https://hispot-iot.com" 2>/dev/null || echo "000")
+        if [[ "$https_code" =~ ^(200|301|302)$ ]]; then
+            echo -e "  ${GREEN}● HTTPS${NC} (HTTP $https_code)"
+            echo "    https://hispot-iot.com"
+        else
+            echo -e "  ${RED}● HTTPS${NC} (HTTP $https_code)"
+            echo "    https://hispot-iot.com"
         fi
     fi
     
