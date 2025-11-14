@@ -2363,15 +2363,38 @@ app.get('/reports/dashboard-stats', async (req, res) => {
 // 本日の検品実績統計
 app.get('/reports/daily-inspection-stats', async (req, res) => {
     try {
-        const result = await pool.query(`
+        // 検品完了・失敗のカウントはqr_inspectionsから取得
+        const inspectionResult = await pool.query(`
             SELECT
                 COUNT(*) FILTER (WHERE status = 'completed' AND DATE(completed_at) = CURRENT_DATE) as completed_today,
-                COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
-                COUNT(*) FILTER (WHERE status = 'failed' AND DATE(completed_at) = CURRENT_DATE) as failed_today,
-                COUNT(*) FILTER (WHERE status = 'completed' AND DATE(completed_at) = CURRENT_DATE) * 100.0 /
-                    NULLIF(COUNT(*) FILTER (WHERE (status = 'completed' OR status = 'failed') AND DATE(completed_at) = CURRENT_DATE), 0) as pass_rate_today
+                COUNT(*) FILTER (WHERE status = 'failed' AND DATE(completed_at) = CURRENT_DATE) as failed_today
             FROM qr_inspections
         `);
+        
+        // 待機中のカウントはshipping_instructionsから取得（検品待ち出荷指示一覧と一致させる）
+        const pendingResult = await pool.query(`
+            SELECT COUNT(*) as in_progress
+            FROM shipping_instructions
+            WHERE status = 'pending'
+        `);
+        
+        const inspectionStats = inspectionResult.rows[0];
+        const pendingStats = pendingResult.rows[0];
+        
+        // 合格率の計算
+        const completedToday = parseInt(inspectionStats.completed_today) || 0;
+        const failedToday = parseInt(inspectionStats.failed_today) || 0;
+        const totalInspections = completedToday + failedToday;
+        const passRateToday = totalInspections > 0 ? (completedToday * 100.0 / totalInspections) : 0;
+        
+        const result = {
+            rows: [{
+                completed_today: completedToday,
+                in_progress: parseInt(pendingStats.in_progress) || 0,
+                failed_today: failedToday,
+                pass_rate_today: passRateToday
+            }]
+        };
 
         const stats = result.rows[0];
 
