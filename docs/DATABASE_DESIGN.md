@@ -2,8 +2,8 @@
 
 生産管理システム (production_db) のデータベース設計書
 
-**バージョン:** 2.1.0
-**最終更新:** 2025-11-13
+**バージョン:** 2.2.0
+**最終更新:** 2025-11-14
 **DBMS:** PostgreSQL 15
 
 ---
@@ -191,6 +191,19 @@ erDiagram
         varchar status "ステータス"
         text error_message "エラーメッセージ"
     }
+
+    inspectors {
+        int id PK
+        varchar inspector_code UK "検品者コード"
+        varchar inspector_name "氏名"
+        varchar email "メールアドレス"
+        varchar phone "電話番号"
+        varchar department "部署"
+        varchar role "役割"
+        boolean is_active "有効フラグ"
+        timestamp created_at
+        timestamp updated_at
+    }
 ```
 
 ---
@@ -211,6 +224,7 @@ erDiagram
 | 10 | product_components | 製品構成部品 | 製品を構成する部品とQRコード | 500-5000 |
 | 11 | qr_inspections | QR検品記録 | QRコードベースの検品セッション | 10000-100000 |
 | 12 | qr_inspection_details | QR検品詳細 | 個別部品のスキャン記録 | 50000-500000 |
+| 13 | inspectors | 検品者マスタ | 検品者の基本情報を管理 | 10-100 |
 
 ---
 
@@ -565,6 +579,41 @@ erDiagram
 
 ---
 
+### 13. inspectors (検品者マスタ)
+
+**テーブル説明:** 検品者の基本情報を管理するマスタテーブル
+
+| カラム名 | 型 | NULL | デフォルト | 説明 | 制約 |
+|---------|-----|------|-----------|------|------|
+| id | SERIAL | NOT NULL | AUTO | 検品者ID（主キー） | PK |
+| inspector_code | VARCHAR(20) | NOT NULL | - | 検品者コード | UK, NOT NULL |
+| inspector_name | VARCHAR(100) | NOT NULL | - | 氏名 | NOT NULL |
+| email | VARCHAR(255) | NULL | - | メールアドレス | - |
+| phone | VARCHAR(20) | NULL | - | 電話番号 | - |
+| department | VARCHAR(100) | NULL | - | 部署 | - |
+| role | VARCHAR(50) | NULL | 'inspector' | 役割 | - |
+| is_active | BOOLEAN | NULL | true | 有効フラグ | - |
+| created_at | TIMESTAMP | NULL | CURRENT_TIMESTAMP | 作成日時 | - |
+| updated_at | TIMESTAMP | NULL | CURRENT_TIMESTAMP | 更新日時 | - |
+
+**役割値:**
+- `inspector`: 検品者
+- `supervisor`: スーパーバイザー
+- `admin`: 管理者
+
+**インデックス:**
+- PRIMARY KEY: id
+- UNIQUE: inspector_code
+- INDEX: idx_inspectors_code (inspector_code)
+- INDEX: idx_inspectors_active (is_active)
+
+**備考:**
+- 検品者マスタとして、検品業務を行う担当者の情報を一元管理
+- is_active フラグにより、退職者や異動者を論理削除可能
+- qr_inspections.inspector_name や shipping_inspections.inspector_name とは直接的な外部キー制約はないが、データリストとして活用
+
+---
+
 ## インデックス一覧
 
 | インデックス名 | テーブル | カラム | 種別 | 目的 |
@@ -579,6 +628,8 @@ erDiagram
 | idx_product_components_qr_code | product_components | qr_code | INDEX | QRコード検索の高速化 |
 | idx_qr_inspections_shipping_instruction | qr_inspections | shipping_instruction_id | INDEX | 出荷指示別QR検品検索の高速化 |
 | idx_qr_inspection_details_qr_inspection | qr_inspection_details | qr_inspection_id | INDEX | QR検品詳細検索の高速化 |
+| idx_inspectors_code | inspectors | inspector_code | INDEX | 検品者コード検索の高速化 |
+| idx_inspectors_active | inspectors | is_active | INDEX | 有効検品者検索の高速化 |
 
 ---
 
@@ -648,6 +699,7 @@ ORDER BY si.created_at DESC;
 - `delivery_locations.location_code`: 拠点コードは一意
 - `shipping_instructions.instruction_id`: 出荷指示番号は一意
 - `product_components.qr_code`: QRコードは一意
+- `inspectors.inspector_code`: 検品者コードは一意
 
 ---
 
@@ -676,6 +728,7 @@ ORDER BY si.created_at DESC;
 
 | バージョン | 日付 | 変更内容 |
 |----------|------|---------|
+| 2.2.0 | 2025-11-14 | 検品者マスタテーブル追加（inspectors）、検品者CRUD API実装、datalist入力対応 |
 | 2.1.0 | 2025-11-13 | QR検品テーブル追加、製品構成部品テーブル追加 |
 | 2.0.0 | 2025-10-01 | 出荷検品テーブル追加、在庫テーブル追加 |
 | 1.0.0 | 2025-08-01 | 初版作成 |
@@ -685,4 +738,4 @@ ORDER BY si.created_at DESC;
 **文書管理**
 - 作成者: システム管理者
 - 承認者: プロジェクトマネージャー
-- 最終レビュー: 2025-11-13
+- 最終レビュー: 2025-11-14
