@@ -637,11 +637,15 @@ check_status() {
     fi
     
     # RDSステータス
-    if [ -n "$rds_instance_id" ]; then
-        echo ""
-        echo "📊 RDS Instance:"
+    echo ""
+    echo "📊 RDS Instance:"
+    # RDS識別子をエンドポイントから取得
+    local rds_endpoint=$(get_terraform_output "rds_endpoint" 2>/dev/null || echo "")
+    local rds_identifier=$(echo "$rds_endpoint" | cut -d: -f1 | cut -d. -f1)
+    
+    if [ -n "$rds_identifier" ]; then
         local rds_state=$(aws rds describe-db-instances \
-            --db-instance-identifier "$rds_instance_id" \
+            --db-instance-identifier "$rds_identifier" \
             --query 'DBInstances[0].DBInstanceStatus' \
             --output text 2>/dev/null || echo "unknown")
         
@@ -652,6 +656,8 @@ check_status() {
         else
             echo -e "  ${CYAN}● $rds_state${NC}"
         fi
+    else
+        echo -e "  ${YELLOW}● unknown${NC}"
     fi
     
     # アプリケーションヘルスチェック
