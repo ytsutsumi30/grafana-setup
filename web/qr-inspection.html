@@ -766,11 +766,8 @@
 
                             // 全てスキャン完了チェック
                             if (this.scannedItems.size === this.targetItems.length) {
-                                setTimeout(() => {
-                                    this.stopScan();
-                                    this.showStatus('全ての検品が完了しました！検品完了ボタンを押してください。', 'success');
-                                    this.btnComplete.disabled = false;
-                                }, 1000);
+                                this.showStatus('全ての検品が完了しました！検品完了ボタンを押してください。', 'success');
+                                this.btnComplete.disabled = false;
                             }
                         } else {
                             this.showStatus(result.message || 'スキャンの記録に失敗しました', 'danger');
