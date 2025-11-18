@@ -1878,16 +1878,30 @@ app.get('/shipping-instructions/:id/qr-inspection-data', async (req, res) => {
             LIMIT 1
         `, [id]);
 
-        const existingInspection = existingInspectionResult.rows.length > 0 
-            ? existingInspectionResult.rows[0] 
+        const existingInspection = existingInspectionResult.rows.length > 0
+            ? existingInspectionResult.rows[0]
             : null;
 
-        // 5. レスポンスを返す
+        // 5. 既存の検品セッションがある場合、スキャン済みアイテムを取得
+        let scannedQRCodes = [];
+        if (existingInspection) {
+            const scannedResult = await pool.query(`
+                SELECT DISTINCT qid.qr_code
+                FROM qr_inspection_details qid
+                WHERE qid.qr_inspection_id = $1
+                  AND qid.status = 'scanned'
+            `, [existingInspection.id]);
+
+            scannedQRCodes = scannedResult.rows.map(row => row.qr_code);
+        }
+
+        // 6. レスポンスを返す
         res.json({
             shipping: shipping,
             components: componentsResult.rows,
             inventory: inventory,
-            existingInspection: existingInspection
+            existingInspection: existingInspection,
+            scannedQRCodes: scannedQRCodes
         });
 
     } catch (error) {
