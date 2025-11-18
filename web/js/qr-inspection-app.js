@@ -339,13 +339,11 @@ async function processQRScan(qrCode) {
 
     try {
         // APIにスキャン結果を送信
-        const response = await fetch(`${API_BASE_URL}/qr-inspections/${qrInspectionRecord.id}/items`, {
+        const response = await fetch(`${API_BASE_URL}/qr-inspections/${qrInspectionRecord.id}/scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                component_id: matchedItem.component_id,
-                qr_code_value: qrCode,
-                scanned_quantity: matchedItem.required_quantity
+                qr_code: qrCode
             })
         });
 
@@ -567,11 +565,10 @@ async function completeQRInspection() {
 
     try {
         const response = await fetch(`${API_BASE_URL}/qr-inspections/${qrInspectionRecord.id}/complete`, {
-            method: 'POST',
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scanned_count: scannedCount,
-                total_count: totalCount
+                notes: `スキャン完了: ${scannedCount}/${totalCount}`
             })
         });
 
