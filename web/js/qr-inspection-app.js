@@ -418,15 +418,35 @@ function updateQRProgress(scanned, total) {
     }
 }
 
-// 最後にスキャンしたQRコードを表示
+// 最後にスキャンしたQRコードを表示（デバッグ表示を強化）
 function displayLastScannedQR(qrCode) {
     const container = document.getElementById('qr-result-container');
     if (container) {
         container.style.display = 'block';
+        
+        // 期待される値との比較デバッグ情報
+        const expectedValues = qrContext?.expectedItems?.map(item => item.qr_code_value) || [];
+        const isMatch = expectedValues.includes(qrCode);
+        const matchStatus = isMatch ? 
+            '<span class="badge bg-success">✓ マッチ</span>' : 
+            '<span class="badge bg-danger">✗ 不一致</span>';
+        
         container.innerHTML = `
-            <div class="alert alert-info alert-dismissible fade show">
-                <strong><i class="fas fa-qrcode me-2"></i>スキャン結果:</strong>
-                <code class="ms-2">${qrCode}</code>
+            <div class="alert alert-${isMatch ? 'success' : 'warning'} alert-dismissible fade show">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong><i class="fas fa-qrcode me-2"></i>スキャン結果 (デバッグ)</strong>
+                    ${matchStatus}
+                </div>
+                <div class="mb-2">
+                    <strong>読み取った値:</strong> <code class="bg-light px-2 py-1 rounded">${qrCode}</code>
+                    <small class="text-muted ms-2">(長さ: ${qrCode.length})</small>
+                </div>
+                <div>
+                    <strong>期待される値:</strong><br>
+                    ${expectedValues.map(v => 
+                        `<code class="bg-light px-2 py-1 rounded d-inline-block mb-1 ${v === qrCode ? 'border border-success' : ''}">${v}</code>`
+                    ).join(' ')}
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         `;
