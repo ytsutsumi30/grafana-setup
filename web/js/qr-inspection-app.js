@@ -55,29 +55,23 @@ async function loadQRInspectionData() {
                 expectedItems: [
                     {
                         component_id: 'COMP001',
-                        component_name: '製品マニュアル',
-                        qr_code_value: 'QR-MANUAL-001',
+                        component_name: '製品本体',
+                        // テーブル画面のQRコード値と一致させる
+                        qr_code_value: 'QR-MAIN-PROD001',
                         required_quantity: 1,
                         is_mandatory: true
                     },
                     {
                         component_id: 'COMP002',
-                        component_name: '保証書',
-                        qr_code_value: 'QR-WARRANTY-001',
+                        component_name: '付属品シール',
+                        qr_code_value: 'QR-ACC-SEAL001',
                         required_quantity: 1,
                         is_mandatory: true
                     },
                     {
                         component_id: 'COMP003',
-                        component_name: 'パーツリスト',
-                        qr_code_value: 'QR-PARTS-001',
-                        required_quantity: 1,
-                        is_mandatory: false
-                    },
-                    {
-                        component_id: 'COMP004',
-                        component_name: 'クイックスタートガイド',
-                        qr_code_value: 'QR-QUICK-001',
+                        component_name: '梱包箱',
+                        qr_code_value: 'QR-BOX-PROD001',
                         required_quantity: 1,
                         is_mandatory: true
                     }
