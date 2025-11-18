@@ -234,6 +234,9 @@
                                 <button type="button" class="btn btn-outline-secondary" id="btn-manual-input">
                                     <i class="fas fa-keyboard me-1"></i>手動入力
                                 </button>
+                                <button type="button" class="btn btn-outline-info" id="btn-toggle-debug">
+                                    <i class="fas fa-bug me-1"></i>デバッグ
+                                </button>
                                 <button type="button" class="btn btn-outline-secondary" id="btn-test-scan" style="display: none;">
                                     <i class="fas fa-vial me-1"></i>テストスキャン
                                 </button>
@@ -291,6 +294,34 @@
                 <!-- 結果表示エリア -->
                 <div id="qr-result-container" class="mt-3" style="display: none;">
                     <!-- 結果がここに表示されます -->
+                </div>
+
+                <!-- デバッグパネル -->
+                <div id="debug-panel" class="mt-3 card border-info" style="display: none;">
+                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="fas fa-bug me-2"></i>デバッグ情報
+                        </h6>
+                        <button type="button" class="btn btn-sm btn-light" onclick="document.getElementById('debug-panel').style.display='none'">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>最後にスキャンしたQRコード:</strong>
+                            <div class="alert alert-secondary mt-1 mb-2" id="debug-last-scan">-</div>
+                        </div>
+                        <div class="mb-2">
+                            <strong>登録されているQRコード一覧:</strong>
+                            <div id="debug-target-codes" class="small" style="max-height: 200px; overflow-y: auto;">
+                                <!-- QRコード一覧がここに表示されます -->
+                            </div>
+                        </div>
+                        <div class="mb-0">
+                            <strong>API レスポンス:</strong>
+                            <pre id="debug-api-response" class="small bg-light p-2 rounded" style="max-height: 150px; overflow-y: auto;">-</pre>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -404,6 +435,7 @@
             this.btnStartScan = document.getElementById('btn-start-qr-scan');
             this.btnManualInput = document.getElementById('btn-manual-input');
             this.btnTestScan = document.getElementById('btn-test-scan');
+            this.btnToggleDebug = document.getElementById('btn-toggle-debug');
             this.btnComplete = document.getElementById('btn-complete-qr-inspection');
 
             this.inspectionContent = document.getElementById('qr-inspection-content');
@@ -416,13 +448,48 @@
             this.resultContainer = document.getElementById('qr-result-container');
 
             this.inspectorNameInput = document.getElementById('qr-inspector-name');
+
+            // デバッグパネル要素
+            this.debugPanel = document.getElementById('debug-panel');
+            this.debugLastScan = document.getElementById('debug-last-scan');
+            this.debugTargetCodes = document.getElementById('debug-target-codes');
+            this.debugApiResponse = document.getElementById('debug-api-response');
         }
 
         initEventListeners() {
             this.btnStartScan.addEventListener('click', () => this.handleStartScan());
             this.btnManualInput.addEventListener('click', () => this.handleManualInput());
             this.btnTestScan.addEventListener('click', () => this.handleTestScan());
+            this.btnToggleDebug.addEventListener('click', () => this.toggleDebugPanel());
             this.btnComplete.addEventListener('click', () => this.handleComplete());
+        }
+
+        toggleDebugPanel() {
+            if (this.debugPanel.style.display === 'none') {
+                this.debugPanel.style.display = 'block';
+                this.updateDebugPanel();
+            } else {
+                this.debugPanel.style.display = 'none';
+            }
+        }
+
+        updateDebugPanel() {
+            // 登録されているQRコード一覧を表示
+            if (this.targetItems && this.targetItems.length > 0) {
+                this.debugTargetCodes.innerHTML = this.targetItems.map((item, index) => {
+                    const isScanned = this.scannedItems.has(item.code);
+                    return `
+                        <div class="p-2 mb-1 ${isScanned ? 'bg-success bg-opacity-10' : 'bg-light'} rounded">
+                            <span class="badge ${isScanned ? 'bg-success' : 'bg-secondary'}">${index + 1}</span>
+                            <code class="ms-2">${item.code}</code>
+                            <small class="ms-2 text-muted">${item.name}</small>
+                            ${isScanned ? '<i class="fas fa-check-circle text-success ms-2"></i>' : ''}
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                this.debugTargetCodes.innerHTML = '<p class="text-muted">QRコードが登録されていません</p>';
+            }
         }
 
         initPageLifecycleHandling() {
@@ -745,26 +812,75 @@
         async handleQRResult(data, codeType = 'Unknown') {
             if (!this.isScanning) return;
 
-            console.log(`[Scan] Detected ${codeType}:`, data);
+            console.log(`%c[DEBUG] QR Scan Result`, 'color: #ff6b6b; font-weight: bold; font-size: 14px;');
+            console.log(`  Scanned Code Type: ${codeType}`);
+            console.log(`  Scanned Value: "${data}"`);
+            console.log(`  Value Length: ${data.length}`);
+            console.log(`  Value Type: ${typeof data}`);
+
+            // デバッグパネルにスキャン結果を表示
+            if (this.debugLastScan) {
+                this.debugLastScan.innerHTML = `
+                    <strong>Type:</strong> ${codeType}<br>
+                    <strong>Value:</strong> <code>${data}</code><br>
+                    <strong>Length:</strong> ${data.length} characters<br>
+                    <strong>Time:</strong> ${new Date().toLocaleTimeString('ja-JP')}
+                `;
+            }
+
+            // ターゲットアイテムのデバッグ情報
+            console.log(`%c[DEBUG] Target Items (Total: ${this.targetItems.length})`, 'color: #4ecdc4; font-weight: bold;');
+            this.targetItems.forEach((item, index) => {
+                const isMatch = item.code === data;
+                console.log(`  [${index}] ${isMatch ? '✓ MATCH' : '✗'} "${item.code}" (length: ${item.code.length}) - ${item.name}`);
+                if (!isMatch && item.code.toLowerCase() === data.toLowerCase()) {
+                    console.warn(`    ⚠️ Case mismatch detected!`);
+                }
+            });
 
             const item = this.targetItems.find(item => item.code === data);
 
+            console.log(`%c[DEBUG] Match Result`, 'color: #feca57; font-weight: bold;');
+            console.log(`  Found: ${!!item}`);
+            if (item) {
+                console.log(`  Matched Item:`, item);
+            } else {
+                console.warn(`  No match found for: "${data}"`);
+            }
+
+            // デバッグパネルを更新
+            this.updateDebugPanel();
+
             if (item) {
                 if (this.scannedItems.has(data)) {
+                    console.log(`%c[DEBUG] Duplicate scan detected`, 'color: #ff9ff3;');
                     this.showStatus(`既にスキャン済みです: ${item.name}`, 'warning');
                     this.playBeep('error');
                 } else {
                     // APIにスキャンを記録
                     try {
+                        console.log(`%c[DEBUG] Sending to API`, 'color: #54a0ff; font-weight: bold;');
+                        console.log(`  Endpoint: /qr-inspections/${this.qrInspectionId}/scan`);
+                        console.log(`  Request Body:`, { qr_code: data });
+
                         const response = await fetch(`${API_BASE_URL}/qr-inspections/${this.qrInspectionId}/scan`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ qr_code: data })
                         });
 
+                        console.log(`  Response Status: ${response.status} ${response.statusText}`);
+
                         const result = await response.json();
+                        console.log(`  Response Body:`, result);
+
+                        // デバッグパネルにAPIレスポンスを表示
+                        if (this.debugApiResponse) {
+                            this.debugApiResponse.textContent = JSON.stringify(result, null, 2);
+                        }
 
                         if (result.success) {
+                            console.log(`%c[DEBUG] ✓ Scan recorded successfully`, 'color: #2ecc71; font-weight: bold;');
                             this.scannedItems.add(data);
                             this.updateItemStatus(data, true);
                             this.updateProgress();
@@ -780,17 +896,23 @@
                                 }, 1000);
                             }
                         } else {
+                            console.error(`%c[DEBUG] ✗ API returned success: false`, 'color: #e74c3c; font-weight: bold;');
+                            console.error(`  Message:`, result.message);
                             this.showStatus(result.message || 'スキャンの記録に失敗しました', 'danger');
                             this.playBeep('error');
                         }
 
                     } catch (error) {
-                        console.error('Failed to record scan:', error);
+                        console.error(`%c[DEBUG] ✗ API request failed`, 'color: #e74c3c; font-weight: bold;');
+                        console.error('  Error:', error);
                         this.showStatus('スキャンの記録に失敗しました', 'danger');
                         this.playBeep('error');
                     }
                 }
             } else {
+                console.error(`%c[DEBUG] ✗ No matching item found`, 'color: #e74c3c; font-weight: bold;');
+                console.error(`  Scanned: "${data}"`);
+                console.error(`  Available codes:`, this.targetItems.map(i => i.code));
                 this.showStatus(`該当なし (${codeType}): ${data}`, 'danger');
                 this.playBeep('error');
             }
