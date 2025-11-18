@@ -969,7 +969,7 @@
             }
         }
         
-        // QR検出結果処理（検品システム統合）
+                // QR検出結果処理(検品システム統合)
         handleQRResult(data) {
             if (!this.isScanning) return;
             
@@ -981,6 +981,8 @@
             
             if (item) {
                 if (this.scannedItems.has(data)) {
+                    // 既にスキャン済みの場合でもUI更新を実行
+                    this.updateItemStatus(data, true);
                     this.showStatus(`既にスキャン済みです: ${item.name}`, 'warning');
                     this.playBeep('error');
                 } else {
