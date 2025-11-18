@@ -748,6 +748,8 @@
 
             if (item) {
                 if (this.scannedItems.has(item.code)) {
+                    // 既にスキャン済みの場合でもUI更新を実行
+                    this.updateItemStatus(item.code, true);
                     this.showStatus(`既にスキャン済みです: ${item.name}`, 'warning');
                     this.playBeep('error');
                 } else {
