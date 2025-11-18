@@ -315,12 +315,17 @@ async function processQRScan(qrCode) {
         return;
     }
 
-    // 期待されるQRコードか確認
-    const matchedItem = qrContext.expectedItems.find(item => item.qr_code_value === qrCode);
+    // QRコード値を正規化（前後の空白削除、大文字に統一）
+    const normalizedQrCode = qrCode.trim().toUpperCase();
+    
+    // 期待されるQRコードか確認（大文字小文字を区別しない）
+    const matchedItem = qrContext.expectedItems.find(item => 
+        item.qr_code_value.toUpperCase() === normalizedQrCode
+    );
     
     if (!matchedItem) {
         showToast('このQRコードは検品対象ではありません。', 'warning');
-        showQRResult(`QRコード不一致: ${qrCode}`, 'warning');
+        showQRResult(`QRコード不一致: ${normalizedQrCode}`, 'warning');
         return;
     }
 
@@ -332,12 +337,12 @@ async function processQRScan(qrCode) {
     }
 
     try {
-        // APIにスキャン結果を送信
+        // APIにスキャン結果を送信（正規化前の元の値を送信）
         const response = await fetch(`${API_BASE_URL}/qr-inspections/${qrInspectionRecord.id}/scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                qr_code: qrCode
+                qr_code: normalizedQrCode
             })
         });
 
