@@ -913,7 +913,14 @@
 
         updateItemStatus(code, scanned) {
             console.log(`[UpdateItemStatus] Looking for item with code: "${code}", scanned: ${scanned}`);
-            const itemCard = document.querySelector(`[data-item-code="${code}"]`);
+            
+            // 大文字小文字を区別しない検索
+            const normalizedCode = code.toUpperCase();
+            const allCards = Array.from(document.querySelectorAll('[data-item-code]'));
+            const itemCard = allCards.find(card => 
+                card.getAttribute('data-item-code').toUpperCase() === normalizedCode
+            );
+            
             console.log(`[UpdateItemStatus] Found item card:`, itemCard);
             
             if (itemCard) {
@@ -934,8 +941,7 @@
             } else {
                 console.error(`[UpdateItemStatus] Item card not found for code: "${code}"`);
                 console.log('[UpdateItemStatus] Available cards:', 
-                    Array.from(document.querySelectorAll('[data-item-code]'))
-                        .map(el => el.getAttribute('data-item-code'))
+                    allCards.map(el => el.getAttribute('data-item-code'))
                 );
             }
         }
