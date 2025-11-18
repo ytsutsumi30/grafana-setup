@@ -1172,15 +1172,30 @@
         }
         
         updateItemStatus(code, scanned) {
-            const itemCard = document.querySelector(`[data-item-code="${code}"]`);
+            console.log('[UpdateItemStatus] Looking for item with code:', code);
+            
+            // 大文字小文字を区別しない検索
+            const normalizedCode = code.toUpperCase();
+            const allCards = Array.from(document.querySelectorAll('[data-item-code]'));
+            const itemCard = allCards.find(card => 
+                card.getAttribute('data-item-code').toUpperCase() === normalizedCode
+            );
+            
+            console.log('[UpdateItemStatus] Found item card:', itemCard ? 'Yes' : 'No');
+            console.log('[UpdateItemStatus] Available cards:', allCards.map(c => c.getAttribute('data-item-code')));
+            
             if (itemCard) {
                 if (scanned) {
                     itemCard.classList.add('scanned');
                     itemCard.querySelector('.qr-status-icon').innerHTML = '<i class="fas fa-check-circle qr-scanned"></i>';
+                    console.log('[UpdateItemStatus] Updated to scanned state');
                 } else {
                     itemCard.classList.remove('scanned');
                     itemCard.querySelector('.qr-status-icon').innerHTML = '<i class="fas fa-clock qr-pending"></i>';
+                    console.log('[UpdateItemStatus] Updated to pending state');
                 }
+            } else {
+                console.warn('[UpdateItemStatus] Item card not found for code:', code);
             }
         }
         
