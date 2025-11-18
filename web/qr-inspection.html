@@ -739,11 +739,15 @@
             if (!this.isScanning) return;
 
             console.log(`[Scan] Detected ${codeType}:`, data);
+            
+            // QRコード値を正規化（前後の空白削除、大文字に統一）
+            const normalizedData = data.trim().toUpperCase();
+            console.log(`[Scan] Normalized:`, normalizedData);
 
-            const item = this.targetItems.find(item => item.code === data);
+            const item = this.targetItems.find(item => item.code.toUpperCase() === normalizedData);
 
             if (item) {
-                if (this.scannedItems.has(data)) {
+                if (this.scannedItems.has(item.code)) {
                     this.showStatus(`既にスキャン済みです: ${item.name}`, 'warning');
                     this.playBeep('error');
                 } else {
@@ -752,14 +756,14 @@
                         const response = await fetch(`${API_BASE_URL}/qr-inspections/${this.qrInspectionId}/scan`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ qr_code: data })
+                            body: JSON.stringify({ qr_code: normalizedData })
                         });
 
                         const result = await response.json();
 
                         if (result.success) {
-                            this.scannedItems.add(data);
-                            this.updateItemStatus(data, true);
+                            this.scannedItems.add(item.code);
+                            this.updateItemStatus(item.code, true);
                             this.updateProgress();
                             this.showStatus(`✓ スキャン完了 (${codeType}): ${item.name}`, 'success');
                             this.playBeep('success');
@@ -781,7 +785,7 @@
                     }
                 }
             } else {
-                this.showStatus(`該当なし (${codeType}): ${data}`, 'danger');
+                this.showStatus(`該当なし (${codeType}): ${normalizedData}`, 'danger');
                 this.playBeep('error');
             }
         }
@@ -908,15 +912,31 @@
         }
 
         updateItemStatus(code, scanned) {
+            console.log(`[UpdateItemStatus] Looking for item with code: "${code}", scanned: ${scanned}`);
             const itemCard = document.querySelector(`[data-item-code="${code}"]`);
+            console.log(`[UpdateItemStatus] Found item card:`, itemCard);
+            
             if (itemCard) {
                 if (scanned) {
                     itemCard.classList.add('scanned');
-                    itemCard.querySelector('.qr-status-icon').innerHTML = '<i class="fas fa-check-circle qr-scanned"></i>';
+                    const iconElement = itemCard.querySelector('.qr-status-icon');
+                    if (iconElement) {
+                        iconElement.innerHTML = '<i class="fas fa-check-circle qr-scanned"></i>';
+                    }
+                    console.log(`[UpdateItemStatus] Updated item "${code}" to scanned`);
                 } else {
                     itemCard.classList.remove('scanned');
-                    itemCard.querySelector('.qr-status-icon').innerHTML = '<i class="fas fa-clock qr-pending"></i>';
+                    const iconElement = itemCard.querySelector('.qr-status-icon');
+                    if (iconElement) {
+                        iconElement.innerHTML = '<i class="fas fa-clock qr-pending"></i>';
+                    }
                 }
+            } else {
+                console.error(`[UpdateItemStatus] Item card not found for code: "${code}"`);
+                console.log('[UpdateItemStatus] Available cards:', 
+                    Array.from(document.querySelectorAll('[data-item-code]'))
+                        .map(el => el.getAttribute('data-item-code'))
+                );
             }
         }
 
