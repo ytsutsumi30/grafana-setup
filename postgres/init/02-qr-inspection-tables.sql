@@ -51,8 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_qr_inspection_details_qr_inspection ON qr_inspect
 INSERT INTO product_components (product_id, component_type, component_name, qr_code) VALUES
 -- 製品A (PROD001) の同梱物
 (1, 'main', '製品本体', 'QR-MAIN-PROD001'),
-(1, 'accessory', '製品付属品（ケーブル）', 'QR-ACC-CABLE001'),
-(1, 'manual', '製品マニュアル', 'QR-MAN-PROD001'),
+(1, 'accessory', '付属品シール', 'QR-ACC-SEAL001'),
+(1, 'packaging', '梱包箱', 'QR-BOX-PROD001'),
 
 -- 製品B (PROD002) の同梱物
 (2, 'main', '製品本体', 'QR-MAIN-PROD002'),
