@@ -50,6 +50,13 @@ const pool = new Pool({
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// システム設定（POC用）
+let systemConfig = {
+    pocMode: true,  // POCモード: true = DB書き込み抑止, false = 通常動作
+    enableQRInspectionDB: false,  // QR検品のDB書き込み: false = 抑止, true = 有効
+    lastUpdated: new Date().toISOString()
+};
+
 // プロキシ信頼設定（nginxリバースプロキシ対応）
 app.set('trust proxy', 1);
 
@@ -1626,6 +1633,19 @@ app.post('/qr-inspections/:id/scan', async (req, res) => {
         }
         
         const component = componentResult.rows[0];
+        
+        // POCモードチェック: DB書き込みが無効の場合
+        if (systemConfig.pocMode && !systemConfig.enableQRInspectionDB) {
+            logger.info(`[POC Mode] QR scan skipped DB write: ${qr_code}`);
+            
+            // DB書き込みなしでも成功レスポンスを返す
+            return res.json({ 
+                success: true, 
+                message: 'スキャン成功 (POCモード: DB書き込みなし)',
+                component: component,
+                pocMode: true
+            });
+        }
         
         // 既にスキャン済みかチェック
         const existingResult = await pool.query(`
@@ -4952,6 +4972,41 @@ app.post('/database/restore', async (req, res) => {
 app.use((err, req, res, next) => {
     logger.error('Unhandled error:', err);
     res.status(500).json({ error: 'Internal server error' });
+});
+
+// === システム設定API（POCモード制御） ===
+
+// システム設定取得
+app.get('/system-config', (req, res) => {
+    res.json(systemConfig);
+});
+
+// システム設定更新
+app.patch('/system-config', (req, res) => {
+    try {
+        const { pocMode, enableQRInspectionDB } = req.body;
+        
+        if (typeof pocMode === 'boolean') {
+            systemConfig.pocMode = pocMode;
+        }
+        
+        if (typeof enableQRInspectionDB === 'boolean') {
+            systemConfig.enableQRInspectionDB = enableQRInspectionDB;
+        }
+        
+        systemConfig.lastUpdated = new Date().toISOString();
+        
+        logger.info('System config updated:', systemConfig);
+        
+        res.json({
+            success: true,
+            message: 'システム設定を更新しました',
+            config: systemConfig
+        });
+    } catch (error) {
+        logger.error('Error updating system config:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // 404ハンドラー
