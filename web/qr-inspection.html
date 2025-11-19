@@ -793,8 +793,8 @@
                         } else if (result.message && result.message.includes('既にスキャン済み')) {
                             // 重複スキャンの場合でもUIを更新（ページリロード後の継続対応）
                             console.log(`%c[DEBUG] ⚠ Duplicate scan - updating UI anyway`, 'color: #f39c12; font-weight: bold;');
-                            this.scannedItems.add(data);
-                            this.updateItemStatus(data, true);
+                            this.scannedItems.add(item.code);
+                            this.updateItemStatus(item.code, true);
                             this.updateProgress();
                             this.showStatus(`既にスキャン済み: ${item.name}`, 'info');
                             this.playBeep('error');
