@@ -474,30 +474,14 @@
                     required: comp.is_required
                 }));
 
-                // 既存の検品レコードがあれば復元
+                // 既存の検品レコードがあればIDのみ復元（スキャン状態は復元しない）
                 if (data.existingInspection && data.existingInspection.status === 'in_progress') {
                     this.qrInspectionId = data.existingInspection.id;
-
-                    // スキャン済みアイテムを復元
-                    if (data.scannedQRCodes && data.scannedQRCodes.length > 0) {
-                        console.log(`[Init] Restoring ${data.scannedQRCodes.length} scanned items from existing session`);
-                        data.scannedQRCodes.forEach(qrCode => {
-                            this.scannedItems.add(qrCode);
-                        });
-                    }
                 }
 
                 this.renderShippingInfo();
                 this.renderInventoryInfo();
                 this.renderItemsList();
-
-                // スキャン済みアイテムのUIを更新
-                if (data.scannedQRCodes && data.scannedQRCodes.length > 0) {
-                    data.scannedQRCodes.forEach(qrCode => {
-                        this.updateItemStatus(qrCode, true);
-                    });
-                }
-
                 this.updateProgress();
 
             } catch (error) {
