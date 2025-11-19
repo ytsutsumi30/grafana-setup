@@ -477,12 +477,27 @@
                 // 既存の検品レコードがあれば復元
                 if (data.existingInspection && data.existingInspection.status === 'in_progress') {
                     this.qrInspectionId = data.existingInspection.id;
-                    // スキャン済みアイテムを復元する処理を追加可能
+
+                    // スキャン済みアイテムを復元
+                    if (data.scannedQRCodes && data.scannedQRCodes.length > 0) {
+                        console.log(`[Init] Restoring ${data.scannedQRCodes.length} scanned items from existing session`);
+                        data.scannedQRCodes.forEach(qrCode => {
+                            this.scannedItems.add(qrCode);
+                        });
+                    }
                 }
 
                 this.renderShippingInfo();
                 this.renderInventoryInfo();
                 this.renderItemsList();
+
+                // スキャン済みアイテムのUIを更新
+                if (data.scannedQRCodes && data.scannedQRCodes.length > 0) {
+                    data.scannedQRCodes.forEach(qrCode => {
+                        this.updateItemStatus(qrCode, true);
+                    });
+                }
+
                 this.updateProgress();
 
             } catch (error) {
@@ -774,6 +789,23 @@
                             if (this.scannedItems.size === this.targetItems.length) {
                                 this.showStatus('全ての検品が完了しました！検品完了ボタンを押してください。', 'success');
                                 this.btnComplete.disabled = false;
+                            }
+                        } else if (result.message && result.message.includes('既にスキャン済み')) {
+                            // 重複スキャンの場合でもUIを更新（ページリロード後の継続対応）
+                            console.log(`%c[DEBUG] ⚠ Duplicate scan - updating UI anyway`, 'color: #f39c12; font-weight: bold;');
+                            this.scannedItems.add(data);
+                            this.updateItemStatus(data, true);
+                            this.updateProgress();
+                            this.showStatus(`既にスキャン済み: ${item.name}`, 'info');
+                            this.playBeep('error');
+
+                            // 全てスキャン完了チェック
+                            if (this.scannedItems.size === this.targetItems.length) {
+                                setTimeout(() => {
+                                    this.stopScan();
+                                    this.showStatus('全ての検品が完了しました！検品完了ボタンを押してください。', 'success');
+                                    this.btnComplete.disabled = false;
+                                }, 1000);
                             }
                         } else {
                             this.showStatus(result.message || 'スキャンの記録に失敗しました', 'danger');
