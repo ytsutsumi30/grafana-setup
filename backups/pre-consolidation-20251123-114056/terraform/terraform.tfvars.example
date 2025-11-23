@@ -1,0 +1,56 @@
+# ========================================
+# Terraform Variables - Example Configuration
+# Copy this file to terraform.tfvars and update values
+# ========================================
+
+# AWS Configuration
+aws_region        = "ap-northeast-1"
+environment       = "poc"
+availability_zone = "ap-northeast-1a"
+
+# Network Configuration
+vpc_cidr           = "10.0.0.0/16"
+public_subnet_cidr = "10.0.1.0/24"
+
+# Security - IMPORTANT: Restrict in production!
+allowed_cidr_blocks = [
+  "0.0.0.0/0"  # Allow from anywhere (POC only)
+  # "YOUR_IP/32"  # Recommended: Use your specific IP
+]
+
+# EC2 Configuration
+instance_type = "t3.micro"  # ~$7.5/month (upgrade to t3.small if needed)
+key_name      = "your-ssh-key-name"  # Create this key pair in AWS Console first
+
+# RDS Configuration
+db_instance_class    = "db.t3.micro"  # ~$12-15/month
+db_allocated_storage = 20
+db_name              = "production_db"
+db_user              = "production_user"
+db_password          = "ChangeThisPassword123!"  # CHANGE THIS!
+
+# Auto Start/Stop Scheduler
+enable_scheduler = true
+
+# Schedule times (in UTC - adjust for your timezone)
+# JST = UTC+9, so 00:00 UTC = 09:00 JST
+start_schedule = "cron(0 0 ? * MON-FRI *)"   # 9:00 AM JST (Mon-Fri)
+stop_schedule  = "cron(0 10 ? * MON-FRI *)"  # 7:00 PM JST (Mon-Fri)
+
+timezone = "Asia/Tokyo"
+
+# ========================================
+# Common Schedule Examples:
+# ========================================
+# Business hours (9AM-6PM JST, Mon-Fri):
+#   start_schedule = "cron(0 0 ? * MON-FRI *)"   # 9:00 AM JST
+#   stop_schedule  = "cron(0 9 ? * MON-FRI *)"   # 6:00 PM JST
+#
+# Extended hours (8AM-8PM JST, Mon-Fri):
+#   start_schedule = "cron(0 23 ? * SUN-THU *)"  # 8:00 AM JST
+#   stop_schedule  = "cron(0 11 ? * MON-FRI *)"  # 8:00 PM JST
+#
+# Weekday only (24h on weekdays, off on weekends):
+#   start_schedule = "cron(0 15 ? * SUN *)"      # Mon 00:00 JST
+#   stop_schedule  = "cron(0 15 ? * FRI *)"      # Sat 00:00 JST
+# ========================================

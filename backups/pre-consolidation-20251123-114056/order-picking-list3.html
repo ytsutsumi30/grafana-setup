@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>受注オーダー出荷 - 受注番号 *1424571$M1*</title>
+    <link href="https://cdn.jsdelivr.net/npm/ids-enterprise@latest/dist/css/theme-new-light.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/ids-enterprise@latest/dist/css/ids-enterprise.min.css" rel="stylesheet">
+    <!-- html5-qrcode for barcode scanning -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+    <!-- Barcode generation library (JsBarcode) -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <!-- Tesseract.js for OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.1/dist/tesseract.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 5px;
+            margin: 0;
+            height: 100vh;
+            overflow: auto;
+        }
+        
+        .container {
+            max-width: 768px;
+            width: 100%;
+            margin: 0 auto;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            padding: 10px;
+            min-height: calc(100vh - 10px);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .title {
+            width: 100%;
+        }
+        
+        .title h1 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .order-number-section {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        
+        .order-number-label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .barcode-section {
+            text-align: center;
+            padding: 5px;
+            background: #f9f9f9;
+            border-radius: 3px;
+        }
+        
+        .barcode-img {
+            width: 150px;
+            height: 30px;
+            background: repeating-linear-gradient(90deg, #000 0px, #000 2px, transparent 2px, transparent 4px);
+            margin: 0 auto;
+        }
+        
+        .barcode-text {
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            margin-top: 2px;
+            font-weight: bold;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .info-section {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 6px 8px;
+            background: #fafafa;
+        }
+        
+        .info-label {
+            font-size: 9px;
+            color: #666;
+            margin-bottom: 2px;
+            font-weight: 600;
+        }
+        
+        .info-value {
+            font-size: 12px;
+            color: #333;
+            font-weight: 500;
+            word-break: break-all;
+        }
+        
+        .info-value.large {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .product-section {
+            border: 2px solid #333;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #f0f7ff;
+        }
+        
+        .product-header {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #cce5ff;
+        }
+        
+        .product-code-section {
+            width: 100%;
+            margin-bottom: 8px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+        
+        .product-code-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .product-code-label {
+            font-size: 9px;
+            color: #666;
+            margin-bottom: 2px;
+            font-weight: 600;
+        }
+        
+        .product-code-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 2px;
+        }
+        
+        .product-name {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 2px;
+            letter-spacing: 0.5px;
+        }
+        
+        .product-item-value {
+            font-size: 13px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 2px;
+        }
+        
+        .delivery-date {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 4px;
+            padding: 6px 10px;
+            background: white;
+            border-radius: 3px;
+            border: 1px solid #333;
+            cursor: pointer;
+        }
+        
+        .delivery-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 6px;
+        }
+        
+        .delivery-label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 600;
+            min-width: 40px;
+        }
+        
+        .delivery-input-wrapper {
+            position: relative;
+            flex: 1;
+        }
+        
+        .delivery-input {
+            width: 100%;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            padding: 6px 10px;
+            background: white;
+            border-radius: 3px;
+            border: 2px solid #333;
+            cursor: pointer;
+            font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .delivery-input:focus {
+            outline: none;
+            border-color: #555;
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
+        }
+        
+        .delivery-display {
+            width: 100%;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            padding: 6px 10px;
+            background: white;
+            border-radius: 3px;
+            border: 2px solid #333;
+            cursor: pointer;
+            font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .delivery-display:hover {
+            background: #f9f9f9;
+        }
+        
+        .quantity-section {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+        
+        .quantity-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .quantity-label {
+            font-size: 9px;
+            color: #666;
+            margin-bottom: 3px;
+            font-weight: 600;
+        }
+        
+        .quantity-box {
+            background: white;
+            border: 2px solid #333;
+            border-radius: 4px;
+            padding: 6px 10px;
+            width: 100%;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .quantity-box2 {
+            background:  #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 6px 10px;
+            width: 100%;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .quantity-display {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .quantity-input {
+            width: 100%;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+            border: none;
+            background: transparent;
+            outline: none;
+            height: 100%;
+        }
+        
+        .stock-quantity {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 3px;
+        }
+        
+        .product-barcode {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #cce5ff;
+        }
+        
+        .barcode-detail {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 48%;
+        }
+        
+        .barcode-detail-img {
+            width: 100%;
+            max-width: 120px;
+            height: 25px;
+            background: repeating-linear-gradient(90deg, #000 0px, #000 2px, transparent 2px, transparent 4px);
+        }
+        
+        .shipping-company {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 10px;
+            background:  #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            width: 48%;
+        }
+        
+        .details-grid {
+            display: grid;
+            grid-template-columns: 0.75fr 0.75fr 0.75fr 1.75fr;
+            gap: 6px;
+            margin-bottom: 0;
+        }
+        
+        .detail-item {
+            padding: 6px 8px;
+            background: #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 3px;
+        }
+        
+        .supplier-section {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 3px 8px;
+            background: #fafafa;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: flex-start;
+            width: 100%;
+        }
+        
+        .section-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            border: none;
+            min-width: auto;
+            flex-shrink: 0;
+        }
+        
+        .address-content {
+            text-align: left;
+            font-size: 12px;
+            color: #333;
+            flex: 1;
+        }
+        
+        .address-line {
+            margin: 2px 0;
+            font-size: 12px;
+            color: #333;
+            text-align: left;
+        }
+        
+        .address-icon {
+            margin-right: 2px;
+            margin-left: 2px;
+            color: #666;
+        }
+        
+        .tracking-number-section {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f0f7ff;
+            border: 1px solid #cce5ff;
+            border-radius: 4px;
+        }
+        
+        .tracking-label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        
+        .tracking-input-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .tracking-input {
+            flex: 1;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 4px;
+            border: 2px solid #333;
+            outline: none;
+            font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .tracking-input:focus {
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+        }
+        
+        .btn-camera {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: bold;
+            color: white;
+            background: #0066cc;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .btn-camera:hover {
+            background: #0052a3;
+        }
+        
+        .btn-camera:active {
+            transform: scale(0.98);
+        }
+        
+        .btn-camera svg {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .button-area {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 2px solid #e0e0e0;
+        }
+        
+        .checkbox-area {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            margin-top: 8px;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: white;
+            border-radius: 3px;
+            border: 1px solid #e0e0e0;
+            flex: 1;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #333;
+            flex-shrink: 0;
+        }
+        
+        .checkbox-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 50%;
+        }
+        
+        .btn-back {
+            background-color: #f5f5f5;
+            color: #333;
+            border: 2px solid #333;
+        }
+        
+        .btn-back:hover {
+            background-color: #e0e0e0;
+        }
+        
+        .btn-process {
+            background-color: #333;
+            color: white;
+            border: 2px solid #333;
+        }
+        
+        .btn-process:hover {
+            background-color: #555;
+            border-color: #555;
+        }
+        
+        .btn:active {
+            transform: scale(0.98);
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .container {
+                box-shadow: none;
+                border-radius: 0;
+            }
+            
+            .button-area {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー部 -->
+        <div class="header">
+            <div class="title">
+                <h1>受注オーダー出荷</h1>
+                <div class="order-number-section">
+                    <span class="order-number-label">受注番号：*1424571$M1*</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 印刷区分・製造元情報 -->
+        <div class="info-grid">
+            <div class="info-section">
+                <div class="info-label">印刷区分名</div>
+                    <div class="info-value" id="printType">(C1、WE、WTのみ)※郡山</div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">得意先略称</div>
+                    <div class="info-value" id="customerShortName">(株)村田製作所</div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">製造元　客先注番</div>
+                    <div class="info-value" id="customerOrderNo"><strong>WT</strong>　　KM9HT0003</div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">ロケーション</div>
+                    <div class="info-value" id="location"></div>
+            </div>
+        </div>
+
+        <!-- 商品情報セクション -->
+        <div class="product-section">
+            <div class="product-header">
+                <div class="product-code-section">
+                    <div class="product-code-item">
+                        <div class="product-code-label">得意先コード</div>
+                            <div class="product-code-value" id="customerCode">0999</div>
+                    </div>
+                    <div class="product-code-item">
+                        <div class="product-code-label">品目名</div>
+                            <div class="product-code-value" id="itemName">PKLX0570</div>
+                    </div>
+                    <div class="product-code-item">
+                        <div class="product-code-label">商品コード</div>
+                            <div class="product-code-value" id="productCode">PKLX0570</div>
+                    </div>
+                </div>
+                <div class="delivery-section">
+                    <div class="delivery-label">納期</div>
+                    <div class="delivery-input-wrapper">
+                        <input type="date" 
+                               class="delivery-input" 
+                               id="deliveryDate" 
+                               value="2025-10-31"
+                               onchange="updateDeliveryDisplay()"
+                               style="position: absolute; opacity: 0; pointer-events: none;">
+                        <div class="delivery-display" id="deliveryDisplay" onclick="document.getElementById('deliveryDate').showPicker()">
+                            10/31(木)
+                        </div>
+                    </div>
+                </div>
+                <div class="quantity-section">
+                    <div class="quantity-item">
+                        <div class="quantity-label">出庫数量</div>
+                        <div class="quantity-box">
+                            <input type="text" 
+                                   class="quantity-input" 
+                                   id="shipQuantity" 
+                                   value="44,910"
+                                   placeholder="数量を入力">
+                        </div>
+                    </div>
+                    <div class="quantity-item">
+                        <div class="quantity-label">在庫数量</div>
+                        <div class="quantity-box2">
+                            <div class="quantity-display">179,676</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 運送会社情報 -->
+            <div class="product-barcode">
+                <div class="barcode-detail">
+                    <div class="info-label" style="font-size: 11px; margin-bottom: 4px;">納品先コード</div>
+                    <div class="barcode-detail-img" style="height: 35px; max-width: 140px;">
+                        <!-- SVG inserted for CODE39 barcode rendering; existing text label below is preserved -->
+                        <svg id="productBarcode" width="140" height="35" aria-hidden="true"></svg>
+                    </div>
+                    <div class="barcode-text" style="font-size: 12px; margin-top: 3px;">*00C099905*</div>
+                </div>
+                <div class="shipping-company">
+                    <div class="info-label">運送会社</div>
+                        <div class="info-value" id="shippingCompany" style="font-size: 13px; font-weight: bold; margin-top: 2px;">西濃　長岡支店</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 詳細情報グリッド -->
+        <div class="details-grid">
+            <div class="detail-item">
+                <div class="info-label">得意先コード</div>
+                    <div class="info-value" id="customerCodeDetail">0999</div>
+            </div>
+            <div class="detail-item">
+                <div class="info-label">納入先コード</div>
+                    <div class="info-value" id="deliveryCode">0</div>
+            </div>
+            <div class="detail-item">
+                <div class="info-label">〒</div>
+                    <div class="info-value" id="postalCode">923-8626</div>
+            </div>
+            <div class="detail-item">
+                <div class="info-label">納入先名称</div>
+                    <div class="info-value" id="deliveryName">㈱小松村田製作所　納品受付係</div>
+            </div>
+        </div>
+
+        <!-- 住所セクション -->
+        <div class="supplier-section">
+            <div class="info-label">住所</div>
+                <div class="info-value" id="address">石川県小松市光町93</div>
+        </div>
+
+        <!-- 送り状番号入力セクション -->
+        <div class="tracking-number-section">
+            <div class="tracking-label">送り状番号</div>
+            <div class="tracking-input-wrapper">
+                <input type="text" 
+                       class="tracking-input" 
+                       id="trackingNumber" 
+                       placeholder="送り状番号を入力">
+                <button class="btn-camera" onclick="openOcrModal()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                    AI-OCR
+                </button>
+                <button class="btn-camera" id="barcodeScanBtn" onclick="openBarcodeScanModal()" style="background:#ff9800; margin-left:4px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+                        <rect x="3" y="7" width="18" height="10" rx="2" stroke="#fff" fill="none"></rect>
+                        <line x1="7" y1="7" x2="7" y2="17" stroke="#fff"></line>
+                        <line x1="17" y1="7" x2="17" y2="17" stroke="#fff"></line>
+                    </svg>
+                    バーコード読取
+                </button>
+    <!-- Barcode Scan Modal -->
+    <div id="barcodeScanModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:8px; max-width:400px; width:90vw; margin:auto; padding:20px; position:relative; box-shadow:0 2px 10px rgba(0,0,0,0.2);">
+            <h3 style="margin-top:0; font-size:18px; color:#333;">バーコード読取 (CODE39)</h3>
+            <div id="barcodeScanArea" style="width:100%; min-height:240px;"></div>
+            <button onclick="closeBarcodeScanModal()" style="position:absolute; top:10px; right:10px; background:#e74c3c; color:#fff; border:none; border-radius:4px; padding:6px 12px; font-weight:bold; cursor:pointer;">閉じる</button>
+            <div id="barcodeScanStatus" style="margin-top:10px; color:#333; font-size:13px;"></div>
+        </div>
+    </div>
+    <!-- バーコード読取モーダルのJSは<script>タグ内に移動済み -->
+            </div>
+        </div>
+
+        <!-- OCR Modal -->
+        <div id="ocrModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+            <div style="background:#fff; border-radius:8px; max-width:400px; width:90vw; margin:auto; padding:20px; position:relative; box-shadow:0 2px 10px rgba(0,0,0,0.2);">
+                <h3 style="margin-top:0; font-size:18px; color:#333;">AI-OCR (送り状番号)</h3>
+                <video id="ocrVideo" autoplay playsinline style="width:100%; max-width:320px; border:1px solid #ccc; border-radius:4px;"></video>
+                <canvas id="ocrCanvas" style="display:none;"></canvas>
+                <div style="margin-top:10px; display:flex; gap:8px;">
+                    <button onclick="captureOcrImage()" style="background:#0066cc; color:#fff; border:none; border-radius:4px; padding:6px 12px; font-weight:bold; cursor:pointer;">撮影してOCR</button>
+                    <button onclick="closeOcrModal()" style="background:#e74c3c; color:#fff; border:none; border-radius:4px; padding:6px 12px; font-weight:bold; cursor:pointer;">閉じる</button>
+                </div>
+                <div id="ocrStatus" style="margin-top:10px; color:#333; font-size:13px;"></div>
+            </div>
+        </div>
+        <!-- チェックボックスエリア -->
+        <div class="checkbox-area">
+            <div class="checkbox-item">
+                <input type="checkbox" id="deliverySlip" onchange="handleCheckboxChange('deliverySlip')">
+                <label for="deliverySlip" class="checkbox-label">納品書設定</label>
+            </div>
+            <div class="checkbox-item">
+                <input type="checkbox" id="shippingLabel" onchange="handleCheckboxChange('shippingLabel')">
+                <label for="shippingLabel" class="checkbox-label">送り状出力</label>
+            </div>
+            <div class="checkbox-item">
+                <input type="checkbox" id="shipmentRegistration" onchange="handleCheckboxChange('shipmentRegistration')">
+                <label for="shipmentRegistration" class="checkbox-label">出荷登録</label>
+            </div>
+        </div>
+
+        <!-- ボタンエリア -->
+        <div class="button-area">
+            <button class="btn btn-back" onclick="goBack()">戻る</button>
+            <button class="btn btn-process" onclick="processOrder()">処理</button>
+        </div>
+    </div>
+
+    <script>
+    // バーコード読取モーダル表示
+        // 納期の表示更新
+        function updateDeliveryDisplay() {
+            const dateInput = document.getElementById('deliveryDate');
+            const selectedDate = new Date(dateInput.value);
+            
+            // 日本語の曜日を取得
+            const daysOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
+            const dayOfWeek = daysOfWeek[selectedDate.getDay()];
+            
+            // MM/DD(曜日)形式に変換
+            const month = selectedDate.getMonth() + 1;
+            const day = selectedDate.getDate();
+            const formattedDate = `${month}/${day}(${dayOfWeek})`;
+            
+            console.log('納期変更:', formattedDate);
+            
+            // 実際のシステムでは、この値をIDOに保存する処理を追加
+        }
+
+        // チェックボックスの変更処理
+        function handleCheckboxChange(checkboxId) {
+            const checkbox = document.getElementById(checkboxId);
+            const isChecked = checkbox.checked;
+            
+            let checkboxName = '';
+            switch(checkboxId) {
+                case 'deliverySlip':
+                    checkboxName = '納品書設定';
+                    break;
+                case 'shippingLabel':
+                    checkboxName = '送り状出力';
+                    break;
+                case 'shipmentRegistration':
+                    checkboxName = '出荷登録';
+                    break;
+            }
+            
+            console.log(`${checkboxName}: ${isChecked ? 'チェック' : 'チェック解除'}`);
+            
+            // 実際のシステムでは、チェック状態をIDOに保存する処理を追加
+            // 例: フラグをデータベースに保存、処理キューに追加など
+        }
+        
+        // チェックボックスの状態を取得
+        function getCheckboxStates() {
+            return {
+                deliverySlip: document.getElementById('deliverySlip').checked,
+                shippingLabel: document.getElementById('shippingLabel').checked,
+                shipmentRegistration: document.getElementById('shipmentRegistration').checked
+            };
+        }
+
+        // 戻るボタンの処理
+        function goBack() {
+            // 実際のシステムでは前の画面に戻る処理を実装
+            if (confirm('前の画面に戻りますか？')) {
+                window.history.back();
+                // または特定のURLに遷移
+                // window.location.href = '/order-list';
+            }
+        }
+
+        // OCRモーダル表示
+        var ocrStream = null;
+        function openOcrModal() {
+            document.getElementById('ocrModal').style.display = 'flex';
+            document.getElementById('ocrStatus').textContent = '';
+            var video = document.getElementById('ocrVideo');
+            // カメラ起動
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(stream) {
+                    ocrStream = stream;
+                    video.srcObject = stream;
+                })
+                .catch(function(err) {
+                    document.getElementById('ocrStatus').textContent = 'カメラ起動エラー: ' + err;
+                });
+        }
+
+        function closeOcrModal() {
+            document.getElementById('ocrModal').style.display = 'none';
+            var video = document.getElementById('ocrVideo');
+            if (ocrStream) {
+                var tracks = ocrStream.getTracks();
+                tracks.forEach(function(track){ track.stop(); });
+                ocrStream = null;
+            }
+            video.srcObject = null;
+            document.getElementById('ocrStatus').textContent = '';
+        }
+
+        function captureOcrImage() {
+            var video = document.getElementById('ocrVideo');
+            var canvas = document.getElementById('ocrCanvas');
+            var status = document.getElementById('ocrStatus');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            status.textContent = 'OCR解析中...';
+            canvas.toBlob(function(blob){
+                Tesseract.recognize(blob, 'jpn', {
+                    logger: function(m){ status.textContent = 'OCR進行中: ' + Math.round((m.progress||0)*100) + '%'; }
+                }).then(function(result){
+                    var text = result.data.text || '';
+                    // 数字・英字・ハイフンのみ抽出、最大20桁
+                    var code = (text.match(/[A-Za-z0-9\-]+/g) || []).join('').substring(0,20);
+                    if (code.length > 0) {
+                        document.getElementById('trackingNumber').value = code;
+                        status.textContent = '認識成功: ' + code;
+                        setTimeout(closeOcrModal, 1200);
+                    } else {
+                        status.textContent = '認識失敗: 番号が検出できませんでした';
+                    }
+                }).catch(function(err){
+                    status.textContent = 'OCRエラー: ' + err;
+                });
+            }, 'image/png');
+        }
+
+        // バーコード読取モーダルのJS
+        var barcodeScanner = null;
+        function openBarcodeScanModal() {
+            document.getElementById('barcodeScanModal').style.display = 'flex';
+            document.getElementById('barcodeScanStatus').textContent = '';
+            if (barcodeScanner) {
+                barcodeScanner.clear();
+                barcodeScanner = null;
+            }
+            barcodeScanner = new Html5Qrcode("barcodeScanArea");
+            barcodeScanner.start(
+                { facingMode: "environment" },
+                {
+                    fps: 10,
+                    qrbox: 250,
+                    formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39]
+                },
+                function(decodedText, decodedResult) {
+                    // 読取成功時
+                    document.getElementById('trackingNumber').value = decodedText;
+                    document.getElementById('barcodeScanStatus').textContent = '読取成功: ' + decodedText;
+                    barcodeScanner.stop().then(function(){
+                        barcodeScanner.clear();
+                        barcodeScanner = null;
+                        setTimeout(closeBarcodeScanModal, 800);
+                    });
+                },
+                function(errorMessage) {
+                    // 読取失敗時
+                    document.getElementById('barcodeScanStatus').textContent = '読取中...';
+                }
+            ).catch(function(err){
+                document.getElementById('barcodeScanStatus').textContent = 'カメラ起動エラー: ' + err;
+            });
+        }
+
+        function closeBarcodeScanModal() {
+            document.getElementById('barcodeScanModal').style.display = 'none';
+            if (barcodeScanner) {
+                barcodeScanner.stop().then(function(){
+                    barcodeScanner.clear();
+                    barcodeScanner = null;
+                });
+            }
+        }
+        
+        // 処理ボタンの処理
+        function processOrder() {
+            // チェックボックスの状態を取得
+            const checkboxStates = getCheckboxStates();
+            const trackingNumber = document.getElementById('trackingNumber').value;
+            
+            if (!trackingNumber) {
+                alert('送り状番号を入力してください。');
+                return;
+            }
+            
+            // 確認メッセージを構築
+            let confirmMessage = '出荷処理を実行しますか？\n受注番号: *1424571$M1*\n送り状番号: ' + trackingNumber + '\n\n選択された処理:\n';
+            
+            if (checkboxStates.deliverySlip) {
+                confirmMessage += '✓ 納品書設定\n';
+            }
+            if (checkboxStates.shippingLabel) {
+                confirmMessage += '✓ 送り状出力\n';
+            }
+            if (checkboxStates.shipmentRegistration) {
+                confirmMessage += '✓ 出荷登録\n';
+            }
+            
+            if (!checkboxStates.deliverySlip && !checkboxStates.shippingLabel && !checkboxStates.shipmentRegistration) {
+                confirmMessage += '（処理が選択されていません）\n';
+            }
+            
+            // 実際のシステムでは出荷処理を実行
+            if (confirm(confirmMessage)) {
+                // ここでバックエンドAPIまたはIDOメソッドを呼び出し
+                console.log('Processing order: 1424571$M1, Tracking: ' + trackingNumber);
+                console.log('Checkbox states:', checkboxStates);
+                
+                // 処理中の表示
+                const processBtn = event.target;
+                processBtn.disabled = true;
+                processBtn.textContent = '処理中...';
+                
+                // 実際の処理（例：IDOのSaveメソッド呼び出し）
+                setTimeout(() => {
+                    let resultMessage = '出荷処理が完了しました。\n送り状番号: ' + trackingNumber + '\n\n実行された処理:\n';
+                    
+                    if (checkboxStates.deliverySlip) {
+                        resultMessage += '✓ 納品書を設定しました\n';
+                    }
+                    if (checkboxStates.shippingLabel) {
+                        resultMessage += '✓ 送り状を出力しました\n';
+                    }
+                    if (checkboxStates.shipmentRegistration) {
+                        resultMessage += '✓ 出荷登録を完了しました\n';
+                    }
+                    
+                    alert(resultMessage);
+                    // 処理完了後の遷移
+                    // window.location.href = '/order-complete';
+                    processBtn.disabled = false;
+                    processBtn.textContent = '処理';
+                }, 1000);
+            }
+        }
+
+        // 印刷機能
+        function printDocument() {
+            window.print();
+        }
+
+        // キーボードショートカット（Ctrl+P で印刷）
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'p') {
+                e.preventDefault();
+                printDocument();
+            }
+        });
+
+        // データバインディング用の関数（実際のシステムではIDOから取得）
+        function loadOrderData(orderNumber) {
+            // ここでバックエンドAPIまたはIDOからデータを取得
+            console.log('Loading order:', orderNumber);
+        }
+
+        // 初期化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Order Shipping initialized');
+            // loadOrderData('1424571$M1');
+            
+            // 納期の初期表示を設定
+            updateDeliveryDisplay();
+            // 初期バーコード表示 (既存のテキストを基にCODE39で描画)
+            (function(){
+                try {
+                    var initialTextEl = document.querySelector('.barcode-text');
+                    if (initialTextEl) {
+                        // render barcode from existing text content
+                        renderBarcode(initialTextEl.textContent || '');
+                    }
+                } catch(e) {
+                    console.error('Initial barcode render failed', e);
+                }
+            })();
+        });
+
+        // -------------------- WSForm API (簡易実装) --------------------
+        // Provides: setCompValue(name, value, callback), getCompValue(name, callback)
+        //           setVarValue(name, value, callback), getVarValue(name, callback)
+        // Components mapping: trackingNumber, shipQuantity, deliveryDate
+        function renderBarcode(value) {
+            var svg = document.getElementById('productBarcode');
+            if (!svg) return;
+            try {
+                var v = (value || '').toString().trim();
+                // If the displayed label contains surrounding asterisks, strip them for encoding
+                if (v.startsWith('*') && v.endsWith('*') && v.length > 1) {
+                    v = v.substring(1, v.length - 1);
+                }
+                // Make uppercase for CODE39
+                v = v.toUpperCase();
+                if (!v) {
+                    // clear svg
+                    while (svg.firstChild) svg.removeChild(svg.firstChild);
+                    return;
+                }
+                JsBarcode(svg, v, {
+                    format: 'CODE39',
+                    displayValue: false,
+                    width: 2,
+                    height: 30,
+                    margin: 0
+                });
+            } catch (e) {
+                console.error('renderBarcode error:', e);
+            }
+        }
+
+        var WSForm = {
+            setCompValue: function(name, value, cb) {
+                var mapping = {
+                    'trackingNumber': 'trackingNumber',
+                    'shipQuantity': 'shipQuantity',
+                    'deliveryDate': 'deliveryDate'
+                };
+                var id = mapping[name] || name;
+                var el = document.getElementById(id);
+                if (el) {
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+                        el.value = value;
+                        var evt = document.createEvent('HTMLEvents');
+                        evt.initEvent('change', true, false);
+                        el.dispatchEvent(evt);
+                    } else {
+                        el.textContent = value;
+                    }
+                    if (typeof cb === 'function') cb('OK');
+                } else {
+                    if (typeof cb === 'function') cb('NOT_FOUND');
+                }
+            },
+            getCompValue: function(name, cb) {
+                var mapping = {
+                    'trackingNumber': 'trackingNumber',
+                    'shipQuantity': 'shipQuantity',
+                    'deliveryDate': 'deliveryDate'
+                };
+                var id = mapping[name] || name;
+                var el = document.getElementById(id);
+                var val = '';
+                if (el) {
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') val = el.value;
+                    else val = el.textContent;
+                }
+                if (typeof cb === 'function') cb(val);
+            },
+            setVarValue: function(name, value, cb) {
+                // info-value項目のIDマッピング
+                var varMap = {
+                    'printType': 'printType',
+                    'customerShortName': 'customerShortName',
+                    'customerOrderNo': 'customerOrderNo',
+                    'location': 'location',
+                    'customerCode': 'customerCode',
+                    'itemName': 'itemName',
+                    'productCode': 'productCode',
+                    'shippingCompany': 'shippingCompany',
+                    'customerCodeDetail': 'customerCodeDetail',
+                    'deliveryCode': 'deliveryCode',
+                    'postalCode': 'postalCode',
+                    'deliveryName': 'deliveryName',
+                    'address': 'address'
+                };
+                if (name === 'barcode' || name === 'barcodeText' || name === '納品先コード') {
+                    var textEl = document.querySelector('.barcode-text');
+                    if (textEl) textEl.textContent = value;
+                    renderBarcode(value);
+                    if (typeof cb === 'function') cb('OK');
+                    return;
+                }
+                var id = varMap[name] || name;
+                var el = document.getElementById(id);
+                if (el) {
+                    el.textContent = value;
+                    if (typeof cb === 'function') cb('OK');
+                } else {
+                    if (typeof cb === 'function') cb('NOT_FOUND');
+                }
+            },
+            getVarValue: function(name, cb) {
+                var varMap = {
+                    'printType': 'printType',
+                    'customerShortName': 'customerShortName',
+                    'customerOrderNo': 'customerOrderNo',
+                    'location': 'location',
+                    'customerCode': 'customerCode',
+                    'itemName': 'itemName',
+                    'productCode': 'productCode',
+                    'shippingCompany': 'shippingCompany',
+                    'customerCodeDetail': 'customerCodeDetail',
+                    'deliveryCode': 'deliveryCode',
+                    'postalCode': 'postalCode',
+                    'deliveryName': 'deliveryName',
+                    'address': 'address'
+                };
+                if (name === 'barcode' || name === 'barcodeText' || name === '納品先コード') {
+                    var textEl = document.querySelector('.barcode-text');
+                    var val = textEl ? textEl.textContent : '';
+                    if (typeof cb === 'function') cb(val);
+                    return;
+                }
+                var id = varMap[name] || name;
+                var el = document.getElementById(id);
+                var val = el ? el.textContent : '';
+                if (typeof cb === 'function') cb(val);
+            }
+        };
+
+        // Expose WSForm to global scope (so other scripts can call it)
+        window.WSForm = WSForm;
+
+        // Optional: when user manually edits the tracking number, don't automatically overwrite barcode.
+        // If needed, caller can call WSForm.setVarValue('barcode', value) externally.
+        // -------------------- end WSForm --------------------
+    </script>
+</body>
+</html>
