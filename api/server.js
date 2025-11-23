@@ -83,9 +83,9 @@ app.use(limiter);
 
 // リクエストログ
 app.use((req, res, next) => {
-    logger.info(`${req.method} ${req.url}`, { 
-        ip: req.ip, 
-        userAgent: req.get('User-Agent') 
+    logger.info(`${req.method} ${req.url}`, {
+        ip: req.ip,
+        userAgent: req.get('User-Agent')
     });
     next();
 });
@@ -107,9 +107,9 @@ app.use('/api/ocr-feedback', ocrFeedbackRoutes);
 app.get('/db-test', async (req, res) => {
     try {
         const result = await pool.query('SELECT NOW()');
-        res.json({ 
-            status: 'Database connected', 
-            time: result.rows[0].now 
+        res.json({
+            status: 'Database connected',
+            time: result.rows[0].now
         });
     } catch (error) {
         logger.error('Database connection error:', error);
@@ -154,11 +154,11 @@ app.get('/products/:id', async (req, res) => {
             LEFT JOIN inventory i ON p.id = i.product_id 
             WHERE p.id = $1
         `, [id]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Product not found' });
         }
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         logger.error('Error fetching product:', error);
@@ -293,7 +293,7 @@ app.delete('/products/:id', async (req, res) => {
         const hasRelations = Object.values(relations).some(count => parseInt(count) > 0);
 
         if (hasRelations) {
-            return res.status(409).json({ 
+            return res.status(409).json({
                 error: '関連データが存在するため削除できません',
                 relations: relations
             });
@@ -810,16 +810,16 @@ app.delete('/delivery-locations/:id', async (req, res) => {
 // === 出荷指示関連API ===
 app.get('/shipping-instructions', async (req, res) => {
     try {
-        const { 
-            status, 
-            priority, 
-            shipping_location, 
-            delivery_location, 
+        const {
+            status,
+            priority,
+            shipping_location,
+            delivery_location,
             shipping_date_from,
             shipping_date_to,
-            instruction_id 
+            instruction_id
         } = req.query;
-        
+
         let query = `
             SELECT si.*, p.product_code, p.product_name,
                    sl.location_name as shipping_location_name,
@@ -840,7 +840,7 @@ app.get('/shipping-instructions', async (req, res) => {
             conditions.push('si.status = $' + (params.length + 1));
             params.push(status);
         }
-        
+
         if (priority) {
             conditions.push('si.priority = $' + (params.length + 1));
             params.push(priority);
@@ -904,11 +904,11 @@ app.get('/shipping-instructions/:id', async (req, res) => {
             LEFT JOIN delivery_locations dl ON si.delivery_location_id = dl.id
             WHERE si.id = $1
         `, [id]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Shipping instruction not found' });
         }
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         logger.error('Error fetching shipping instruction:', error);
@@ -1099,12 +1099,12 @@ app.delete('/shipping-instructions/:id', async (req, res) => {
 // 納入場所別サマリー取得
 app.get('/shipping-instructions/summary/by-delivery-location', async (req, res) => {
     try {
-        const { 
-            shipping_location, 
-            delivery_location, 
+        const {
+            shipping_location,
+            delivery_location,
             shipping_date_from,
             shipping_date_to,
-            instruction_id 
+            instruction_id
         } = req.query;
 
         let query = `
@@ -1177,11 +1177,11 @@ app.get('/shipping-instructions/summary/by-delivery-location', async (req, res) 
 app.get('/shipping-instructions/detail/:deliveryLocationCode', async (req, res) => {
     try {
         const { deliveryLocationCode } = req.params;
-        const { 
-            shipping_location, 
+        const {
+            shipping_location,
             shipping_date_from,
             shipping_date_to,
-            instruction_id 
+            instruction_id
         } = req.query;
 
         let query = `
@@ -1240,7 +1240,7 @@ app.get('/shipping-instructions/detail/:deliveryLocationCode', async (req, res) 
 app.get('/shipping-instructions/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         const query = `
             SELECT si.*, p.product_code, p.product_name,
                    sl.location_name as shipping_location_name,
@@ -1257,13 +1257,13 @@ app.get('/shipping-instructions/:id', async (req, res) => {
             JOIN delivery_locations dl ON si.delivery_location_id = dl.id
             WHERE si.id = $1
         `;
-        
+
         const result = await pool.query(query, [id]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Shipping instruction not found' });
         }
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         logger.error('Error fetching shipping instruction detail:', error);
@@ -1276,12 +1276,12 @@ app.patch('/shipping-instructions/:id/picking', async (req, res) => {
     try {
         const { id } = req.params;
         const { picked_quantity, notes } = req.body;
-        
+
         // バリデーション
         if (picked_quantity !== undefined && (picked_quantity < 0 || !Number.isInteger(picked_quantity))) {
             return res.status(400).json({ error: 'Invalid picked_quantity' });
         }
-        
+
         const query = `
             UPDATE shipping_instructions 
             SET picked_quantity = $1,
@@ -1290,13 +1290,13 @@ app.patch('/shipping-instructions/:id/picking', async (req, res) => {
             WHERE id = $3
             RETURNING *
         `;
-        
+
         const result = await pool.query(query, [picked_quantity, notes, id]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Shipping instruction not found' });
         }
-        
+
         res.json({ message: 'Picking information updated successfully', data: result.rows[0] });
     } catch (error) {
         logger.error('Error updating picking information:', error);
@@ -1495,7 +1495,7 @@ app.get('/products/:productId/components', async (req, res) => {
                     ELSE 5 
                 END, pc.component_name
         `, [productId]);
-        
+
         res.json(result.rows);
     } catch (error) {
         logger.error('Error fetching product components:', error);
@@ -1524,11 +1524,11 @@ app.get('/shipping-instructions/:id/components', async (req, res) => {
                     ELSE 5 
                 END, pc.component_name
         `, [id]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Shipping instruction or components not found' });
         }
-        
+
         res.json(result.rows);
     } catch (error) {
         logger.error('Error fetching shipping instruction components:', error);
@@ -1540,11 +1540,11 @@ app.get('/shipping-instructions/:id/components', async (req, res) => {
 app.post('/qr-inspections', async (req, res) => {
     try {
         const { shipping_instruction_id, inspector_name } = req.body;
-        
+
         if (!shipping_instruction_id || !inspector_name) {
             return res.status(400).json({ error: 'shipping_instruction_id and inspector_name are required' });
         }
-        
+
         // 出荷指示と製品情報を取得
         const shippingResult = await pool.query(`
             SELECT si.*, p.id as product_id, i.current_stock
@@ -1553,22 +1553,22 @@ app.post('/qr-inspections', async (req, res) => {
             LEFT JOIN inventory i ON p.id = i.product_id
             WHERE si.id = $1
         `, [shipping_instruction_id]);
-        
+
         if (shippingResult.rows.length === 0) {
             return res.status(404).json({ error: 'Shipping instruction not found' });
         }
-        
+
         const shippingInstruction = shippingResult.rows[0];
-        
+
         // 同梱物数を取得
         const componentsResult = await pool.query(`
             SELECT COUNT(*) as total_components
             FROM product_components
             WHERE product_id = $1 AND is_required = true
         `, [shippingInstruction.product_id]);
-        
+
         const totalComponents = parseInt(componentsResult.rows[0].total_components);
-        
+
         // QR検品記録を作成
         const result = await pool.query(`
             INSERT INTO qr_inspections (
@@ -1580,7 +1580,7 @@ app.post('/qr-inspections', async (req, res) => {
             shipping_instruction_id, inspector_name, shippingInstruction.product_id,
             totalComponents, shippingInstruction.current_stock
         ]);
-        
+
         logger.info('QR inspection started:', result.rows[0]);
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -1594,28 +1594,28 @@ app.post('/qr-inspections/:id/scan', async (req, res) => {
     try {
         const { id } = req.params;
         const { qr_code } = req.body;
-        
+
         if (!qr_code) {
             return res.status(400).json({ error: 'qr_code is required' });
         }
-        
+
         // QR検品記録を取得
         const inspectionResult = await pool.query(`
             SELECT * FROM qr_inspections WHERE id = $1 AND status = 'in_progress'
         `, [id]);
-        
+
         if (inspectionResult.rows.length === 0) {
             return res.status(404).json({ error: 'QR inspection not found or already completed' });
         }
-        
+
         const inspection = inspectionResult.rows[0];
-        
+
         // 製品同梱物をチェック
         const componentResult = await pool.query(`
             SELECT * FROM product_components 
             WHERE product_id = $1 AND qr_code = $2
         `, [inspection.product_id, qr_code]);
-        
+
         if (componentResult.rows.length === 0) {
             // 不正なQRコード
             const errorResult = await pool.query(`
@@ -1624,44 +1624,44 @@ app.post('/qr-inspections/:id/scan', async (req, res) => {
                 ) VALUES ($1, $2, 'error', 'Invalid QR code for this product')
                 RETURNING *
             `, [id, qr_code]);
-            
-            return res.status(400).json({ 
-                success: false, 
+
+            return res.status(400).json({
+                success: false,
                 message: '対象外のQRコードです',
                 data: errorResult.rows[0]
             });
         }
-        
+
         const component = componentResult.rows[0];
-        
+
         // POCモードチェック: DB書き込みが無効の場合
         if (systemConfig.pocMode && !systemConfig.enableQRInspectionDB) {
             logger.info(`[POC Mode] QR scan skipped DB write: ${qr_code}`);
-            
+
             // DB書き込みなしでも成功レスポンスを返す
-            return res.json({ 
-                success: true, 
+            return res.json({
+                success: true,
                 message: 'スキャン成功 (POCモード: DB書き込みなし)',
                 component: component,
                 pocMode: true
             });
         }
-        
+
         // 既にスキャン済みかチェック
         const existingResult = await pool.query(`
             SELECT * FROM qr_inspection_details 
             WHERE qr_inspection_id = $1 AND product_component_id = $2 AND status = 'scanned'
         `, [id, component.id]);
-        
+
         if (existingResult.rows.length > 0) {
             // 重複スキャン
-            return res.status(400).json({ 
-                success: false, 
+            return res.status(400).json({
+                success: false,
                 message: '既にスキャン済みです',
                 component: component
             });
         }
-        
+
         // スキャン記録を追加
         const scanResult = await pool.query(`
             INSERT INTO qr_inspection_details (
@@ -1669,7 +1669,7 @@ app.post('/qr-inspections/:id/scan', async (req, res) => {
             ) VALUES ($1, $2, $3, 'scanned')
             RETURNING *
         `, [id, component.id, qr_code]);
-        
+
         // スキャン済み数を更新
         await pool.query(`
             UPDATE qr_inspections 
@@ -1680,9 +1680,9 @@ app.post('/qr-inspections/:id/scan', async (req, res) => {
             updated_at = CURRENT_TIMESTAMP
             WHERE id = $1
         `, [id]);
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             message: 'スキャン成功',
             component: component,
             data: scanResult.rows[0]
@@ -1698,7 +1698,23 @@ app.patch('/qr-inspections/:id/complete', async (req, res) => {
     try {
         const { id } = req.params;
         const { notes } = req.body;
-        
+
+        // POCモードチェック: DB書き込みが無効の場合
+        if (systemConfig.pocMode && !systemConfig.enableQRInspectionDB) {
+            logger.info(`[POC Mode] QR inspection complete skipped DB write: ${id}`);
+
+            // DB書き込みなしで成功レスポンスを返す
+            return res.json({
+                id: id,
+                status: 'completed',
+                passed_quantity: 0,
+                notes: notes || '検品完了 (POCモード: DB書き込みなし)',
+                completed_at: new Date().toISOString(),
+                pocMode: true,
+                message: '検品完了しました（POCモード）'
+            });
+        }
+
         // QR検品記録を取得
         const inspectionResult = await pool.query(`
             SELECT qi.*, si.quantity 
@@ -1706,18 +1722,18 @@ app.patch('/qr-inspections/:id/complete', async (req, res) => {
             JOIN shipping_instructions si ON qi.shipping_instruction_id = si.id
             WHERE qi.id = $1 AND qi.status = 'in_progress'
         `, [id]);
-        
+
         if (inspectionResult.rows.length === 0) {
             return res.status(404).json({ error: 'QR inspection not found or already completed' });
         }
-        
+
         const inspection = inspectionResult.rows[0];
-        
+
         // 全同梱物がスキャン済みかチェック
         const isComplete = inspection.scanned_components >= inspection.total_components;
         const status = isComplete ? 'completed' : 'failed';
         const passedQuantity = isComplete ? inspection.quantity : 0;
-        
+
         // 在庫を更新（検品合格の場合のみ）
         let newStock = inspection.current_stock_before;
         if (isComplete && passedQuantity > 0) {
@@ -1729,10 +1745,10 @@ app.patch('/qr-inspections/:id/complete', async (req, res) => {
                 WHERE product_id = $2
                 RETURNING current_stock
             `, [passedQuantity, inspection.product_id]);
-            
+
             newStock = stockResult.rows[0]?.current_stock || inspection.current_stock_before;
         }
-        
+
         // QR検品記録を完了
         const result = await pool.query(`
             UPDATE qr_inspections 
@@ -1745,7 +1761,7 @@ app.patch('/qr-inspections/:id/complete', async (req, res) => {
             WHERE id = $5
             RETURNING *
         `, [status, passedQuantity, newStock, notes, id]);
-        
+
         // 検品完了の場合、出荷指示のステータスも更新
         if (isComplete) {
             await pool.query(`
@@ -1755,7 +1771,7 @@ app.patch('/qr-inspections/:id/complete', async (req, res) => {
                 WHERE id = $1
             `, [inspection.shipping_instruction_id]);
         }
-        
+
         logger.info('QR inspection completed:', result.rows[0]);
         res.json(result.rows[0]);
     } catch (error) {
@@ -1768,7 +1784,7 @@ app.patch('/qr-inspections/:id/complete', async (req, res) => {
 app.get('/qr-inspections/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         // QR検品記録を取得
         const inspectionResult = await pool.query(`
             SELECT qi.*, si.instruction_id, si.quantity, p.product_code, p.product_name
@@ -1777,11 +1793,11 @@ app.get('/qr-inspections/:id', async (req, res) => {
             JOIN products p ON qi.product_id = p.id
             WHERE qi.id = $1
         `, [id]);
-        
+
         if (inspectionResult.rows.length === 0) {
             return res.status(404).json({ error: 'QR inspection not found' });
         }
-        
+
         // 検品詳細を取得
         const detailsResult = await pool.query(`
             SELECT qid.*, pc.component_name, pc.component_type, pc.qr_code as expected_qr_code
@@ -1790,7 +1806,7 @@ app.get('/qr-inspections/:id', async (req, res) => {
             WHERE qid.qr_inspection_id = $1
             ORDER BY qid.scanned_at DESC
         `, [id]);
-        
+
         res.json({
             inspection: inspectionResult.rows[0],
             details: detailsResult.rows
@@ -2404,23 +2420,23 @@ app.get('/reports/daily-inspection-stats', async (req, res) => {
                 COUNT(*) FILTER (WHERE status = 'failed' AND DATE(completed_at) = CURRENT_DATE) as failed_today
             FROM qr_inspections
         `);
-        
+
         // 待機中のカウントはshipping_instructionsから取得（検品待ち出荷指示一覧と一致させる）
         const pendingResult = await pool.query(`
             SELECT COUNT(*) as in_progress
             FROM shipping_instructions
             WHERE status = 'pending'
         `);
-        
+
         const inspectionStats = inspectionResult.rows[0];
         const pendingStats = pendingResult.rows[0];
-        
+
         // 合格率の計算
         const completedToday = parseInt(inspectionStats.completed_today) || 0;
         const failedToday = parseInt(inspectionStats.failed_today) || 0;
         const totalInspections = completedToday + failedToday;
         const passRateToday = totalInspections > 0 ? (completedToday * 100.0 / totalInspections) : 0;
-        
+
         const result = {
             rows: [{
                 completed_today: completedToday,
@@ -3121,7 +3137,7 @@ app.get('/database/stats', async (req, res) => {
 app.post('/database/backup', async (req, res) => {
     try {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' +
-                         new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+            new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
         const backupDir = '/app/backups';
         const backupFile = `backup_${timestamp}.sql`;
         const backupPath = path.join(backupDir, backupFile);
@@ -4985,19 +5001,19 @@ app.get('/system-config', (req, res) => {
 app.patch('/system-config', (req, res) => {
     try {
         const { pocMode, enableQRInspectionDB } = req.body;
-        
+
         if (typeof pocMode === 'boolean') {
             systemConfig.pocMode = pocMode;
         }
-        
+
         if (typeof enableQRInspectionDB === 'boolean') {
             systemConfig.enableQRInspectionDB = enableQRInspectionDB;
         }
-        
+
         systemConfig.lastUpdated = new Date().toISOString();
-        
+
         logger.info('System config updated:', systemConfig);
-        
+
         res.json({
             success: true,
             message: 'システム設定を更新しました',
