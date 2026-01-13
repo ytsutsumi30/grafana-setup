@@ -150,3 +150,50 @@ variable "manage_domain_nameservers" {
   type        = bool
   default     = true
 }
+
+# ========================================
+# GCP Configuration (Hybrid OCR)
+# ========================================
+
+variable "enable_hybrid_ocr" {
+  description = "Enable hybrid OCR mode (AWS Textract + GCP Document AI)"
+  type        = bool
+  default     = false
+}
+
+variable "gcp_project_id" {
+  description = "GCP project ID"
+  type        = string
+  default     = ""
+}
+
+variable "gcp_region" {
+  description = "GCP region for Document AI"
+  type        = string
+  default     = "us"
+}
+
+variable "documentai_processor_id" {
+  description = "Document AI processor ID (if already created manually)"
+  type        = string
+  default     = ""
+}
+
+variable "gcp_credentials_file" {
+  description = "Path to GCP service account credentials JSON file"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ocr_default_engine" {
+  description = "Primary OCR engine: textract or documentai"
+  type        = string
+  default     = "textract"
+}
+
+variable "ocr_confidence_threshold" {
+  description = "OCR confidence threshold for fallback (0-100)"
+  type        = number
+  default     = 85
+}

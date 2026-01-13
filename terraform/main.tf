@@ -12,6 +12,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
   }
 
   # Uncomment for remote state (recommended)
@@ -33,6 +37,12 @@ provider "aws" {
       CostCenter  = "POC"
     }
   }
+}
+
+provider "google" {
+  project     = var.gcp_project_id
+  region      = var.gcp_region
+  credentials = var.gcp_credentials_file != "" ? file(var.gcp_credentials_file) : null
 }
 
 # ========================================
@@ -148,4 +158,23 @@ module "alb" {
   allowed_cidr_blocks = var.allowed_cidr_blocks
 
   depends_on = [module.ec2]
+}
+
+# ========================================
+# GCP Document AI Processor
+# ========================================
+resource "google_project_service" "documentai" {
+  count   = var.enable_hybrid_ocr ? 1 : 0
+  service = "documentai.googleapis.com"
+  
+  disable_on_destroy = false
+}
+
+resource "google_document_ai_processor" "ocr_processor" {
+  count        = var.enable_hybrid_ocr && var.documentai_processor_id == "" ? 1 : 0
+  location     = var.gcp_region
+  display_name = "${var.environment}-ocr-processor"
+  type         = "OCR_PROCESSOR"
+  
+  depends_on = [google_project_service.documentai]
 }

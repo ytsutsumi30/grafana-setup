@@ -220,10 +220,62 @@ class OCREngineEnhanced {
   }
 
   /**
-   * Google Vision OCR (スタブ - APIキー必要)
+   * GCP Document AI OCR
    */
   async googleVisionOCR(image) {
-    throw new Error('Google Vision APIキーが設定されていません');
+    try {
+      console.log('[OCR Enhanced] Document AI処理開始');
+      
+      // API呼び出し
+      const response = await fetch('/api/ocr/documentai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: image,
+          mimeType: 'image/png'
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Document AI APIエラー');
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Document AI処理失敗');
+      }
+      
+      // 結果を統一フォーマットに変換
+      const lines = [];
+      if (result.pages && result.pages.length > 0) {
+        for (const page of result.pages) {
+          if (page.lines) {
+            lines.push(...page.lines.map(line => ({
+              text: line.text,
+              confidence: line.confidence
+            })));
+          }
+        }
+      }
+      
+      console.log(`[OCR Enhanced] Document AI完了: 信頼度=${result.confidence}%`);
+      
+      return {
+        text: result.text,
+        confidence: result.confidence,
+        lines: lines,
+        engine: 'documentai',
+        processingTime: result.processingTime
+      };
+      
+    } catch (error) {
+      console.error('[OCR Enhanced] Document AIエラー:', error);
+      throw error;
+    }
   }
 
   /**

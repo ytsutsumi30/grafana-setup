@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-textract": "^3.917.0",
+    "@google-cloud/documentai": "^8.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.18.2",

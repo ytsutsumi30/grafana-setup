@@ -63,3 +63,34 @@ timezone = "Asia/Tokyo"
 #   start_schedule = "cron(0 8 ? * MON *)"       # Mon 8:00 AM JST
 #   stop_schedule  = "cron(0 0 ? * SAT *)"       # Sat 12:00 AM JST
 # ========================================
+
+# ========================================
+# GCP Configuration (Hybrid OCR)
+# ========================================
+
+# Enable hybrid OCR mode (AWS Textract + GCP Document AI)
+enable_hybrid_ocr = false  # Set to true to enable GCP Document AI
+
+# GCP Project Configuration (required when enable_hybrid_ocr = true)
+gcp_project_id = ""  # Your GCP project ID
+gcp_region     = "us"  # Document AI region: us, eu, asia-northeast1
+
+# Document AI Processor ID (optional - created automatically if empty)
+documentai_processor_id = ""
+
+# GCP Credentials (optional - uses GOOGLE_APPLICATION_CREDENTIALS env var if not set)
+# gcp_credentials_file = "/path/to/service-account-key.json"
+
+# OCR Configuration
+ocr_default_engine       = "textract"    # Primary OCR engine: "textract" or "documentai"
+ocr_confidence_threshold = 85            # Fallback threshold (0-100)
+
+# ========================================
+# Hybrid OCR Mode Notes:
+# ========================================
+# - enable_hybrid_ocr=true: Enables AWS Textract + GCP Document AI
+# - ocr_default_engine: Primary OCR engine to try first
+# - If confidence < threshold, fallback to alternative engine
+# - Cost: AWS Textract ~$1.50/1000 pages, GCP Document AI ~$1.50/1000 pages
+# - GCP offers 1000 pages/month free tier
+# ========================================
