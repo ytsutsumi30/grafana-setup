@@ -1,0 +1,19 @@
+// Bootstrap
+@import 'bootstrap/scss/bootstrap';
+
+// Font Awesome (CDN経由)
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+
+// 共通スタイル（既存システムと統一）
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+}
+
+// ステータスバッジ（既存と同じ）
+.status-pending { background-color: #fff3cd; color: #856404; }
+.status-processing { background-color: #cfe2ff; color: #084298; }
+.status-shipped { background-color: #d1e7dd; color: #0a3622; }
+.status-delivered { background-color: #cff4fc; color: #055160; }
+.status-approved { background-color: #d1e7dd; color: #0a3622; }
+.status-rejected { background-color: #f8d7da; color: #721c24; }
